@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>新手 Claude 環境包 — 選型與設計研究</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 24px 96px;background:#16181d;color:#e6e6e6;
+ font:16px/1.75 -apple-system,system-ui,"PingFang TC","Noto Sans TC",sans-serif}
+main{max-width:900px;margin:0 auto}
+h1{font-size:28px;line-height:1.35;margin:0 0 4px;border-bottom:1px solid #2a2d34;padding-bottom:16px}
+.meta{color:#8b94a3;font-size:13px;margin:0 0 28px}
+h2{font-size:20px;margin:44px 0 12px;padding-top:8px;border-top:1px solid #22252c;color:#cfe0ff}
+h3{font-size:16px;margin:24px 0 8px;color:#b8c4d6}
+p,li{margin:8px 0}
+a{color:#7bb0ff}
+code{background:#22252c;padding:2px 5px;border-radius:4px;font:13px ui-monospace,Menlo,monospace}
+pre{background:#1c1f26;padding:12px;border-radius:8px;overflow:auto;font-size:13.5px;line-height:1.6}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;margin:1em 0;font-size:14.5px}
+th,td{border:1px solid #3a3d44;padding:6px 10px;text-align:left;vertical-align:top}
+th{background:#22252c}
+blockquote{border-left:3px solid #3a3d44;margin:12px 0;padding-left:12px;color:#b8bdc9}
+.mermaid{background:#fff;border-radius:8px;padding:10px;margin:1em 0;text-align:center}
+.toc{background:#1c1f26;border:1px solid #2a2d34;border-radius:8px;padding:16px 20px;margin:0 0 8px}
+.toc-title{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8b94a3;margin:0 0 8px}
+.toc ul{margin:0;padding-left:18px}
+.toc li{margin:4px 0}
+ol.criteria{counter-reset:c;list-style:none;padding:0;margin:12px 0}
+ol.criteria li{counter-increment:c;position:relative;padding:10px 14px 10px 44px;margin:8px 0;
+ background:#1c1f26;border-left:3px solid #4f8cff;border-radius:0 6px 6px 0}
+ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
+ color:#4f8cff;font-weight:600}
+.win{color:#6ee7a0;font-weight:600}
+.lose{color:#ff8f8f;font-weight:600}
+.warn{background:#2a2318;border-left:3px solid #d9a441;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0}
+.pick{background:#16261c;border-left:3px solid #6ee7a0;padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0}
+.dead{color:#8b94a3;text-decoration:line-through}
+</style>
+</head>
+<body><main>
+<h1>新手 Claude 環境包 — 選型與設計研究</h1>
+<p class="meta">2026-08-03（第三版）· 決策依據文件，非 spec。Zeabur 試跑驗證後才寫 spec。</p>
+
+<nav class="toc"><p class="toc-title">目錄</p><ul>
+<li><a href="#q">這份在回答什麼</a></li>
+<li><a href="#fixed">已定案</a></li>
+<li><a href="#final">最終架構</a></li>
+<li><a href="#journey">架構怎麼收斂到這裡</a></li>
+<li><a href="#backend">後端選型：為什麼是 Django</a></li>
+<li><a href="#platform">部署平台：Zeabur</a></li>
+<li><a href="#git">GitHub vs GitLab</a></li>
+<li><a href="#rejected">被評估後淘汰的選項</a></li>
+<li><a href="#cost">成本</a></li>
+<li><a href="#behavior">Kit 設計 · 行為層</a></li>
+<li><a href="#test">Kit 設計 · 測試</a></li>
+<li><a href="#grill">Kit 設計 · 想清楚再做</a></li>
+<li><a href="#memory">Kit 設計 · 記憶</a></li>
+<li><a href="#kit">Kit 組成總表</a></li>
+<li><a href="#gotchas">已知限制與坑（一次列完）</a></li>
+<li><a href="#trial">試跑清單</a></li>
+<li><a href="#decide">待決事項</a></li>
+<li><a href="#src">資料來源</a></li>
+</ul></nav>
+
+<h2 id="q">這份在回答什麼</h2>
+
+<p>要做一份給非技術新手的 Claude 環境包：貼一段話進他的 Claude，就把行為設定和開發環境一次架好。這份文件回答兩件事 —— <strong>那套環境該由哪些服務組成</strong>，以及 <strong>kit 本身該怎麼設計</strong>。</p>
+
+<p>篩選判準八條。前五條是需求方給的，後三條是研究過程中發現非加不可的：</p>
+
+<ol class="criteria">
+<li><strong>容器化</strong>：local / staging / prod 跑在同一個 image 上。</li>
+<li><strong>雲上至少兩個環境</strong>：staging 和 prod 分開。</li>
+<li><strong>初期每人自己一個帳號</strong>，$5/月這一級。</li>
+<li><strong>輕量化</strong>：機器不會開大。</li>
+<li><strong>安全要有一定程度</strong>。</li>
+<li><strong>非技術者要看得懂</strong>：他得能自己點開看到資料，不能只有 SQL 命令列。</li>
+<li><strong>Claude 對這個技術夠熟</strong>。非技術者<strong>沒有能力察覺 Claude 編造了一個不存在的設定</strong>。越冷門，編錯機率越高，而使用者連錯在哪都看不出來。</li>
+<li><strong>認證是瀏覽器點一下，不是複製貼上 token</strong>。每一道「去後台找 API key 貼過來」都是實際會放棄的地方。</li>
+</ol>
+
+<h2 id="fixed">已定案</h2>
+
+<table>
+<tr><th>項目</th><th>結論</th></tr>
+<tr><td>對象</td><td>朋友自己的公司／小團隊的非技術同事（非 Roku，<strong>沒有現成的 git 基礎設施</strong>），Claude 帳號 Pro 以上</td></tr>
+<tr><td>落點</td><td>Claude Desktop 的 <strong>Cowork</strong> 分頁（Chat 碰不到本機檔案、裝不了 plugin）</td></tr>
+<tr><td>載體</td><td>public GitHub repo 當 marketplace，裡面放一包 plugin</td></tr>
+<tr><td>Repo</td><td>直接放進現有的 <code>ai-project-starter</code></td></tr>
+<tr><td>後端</td><td><strong>Django</strong> + SQLite（先不加 Django Ninja，需要獨立前端時再加）</td></tr>
+<tr><td>部署</td><td><strong>Zeabur Dev $5/月</strong></td></tr>
+<tr><td>主動性</td><td>放手模式：只有刪除與對外發布才問，其餘直接做</td></tr>
+<tr><td>保命繩</td><td>三道：自動 commit、測試綠才 commit、環境健檢</td></tr>
+<tr><td>Google Sheets</td><td>v1 只承諾「讀進來 + 整份產出」，<strong>不承諾逐格編輯</strong>（官方 connector 做不到）</td></tr>
+</table>
+
+<h2 id="final">最終架構</h2>
+
+<table>
+<tr><th></th><th>負責</th><th>為什麼</th></tr>
+<tr><td><strong>GitHub</strong></td><td>程式碼、Actions（測試／排程／備份）</td><td>公開 repo 的 Actions 分鐘數無上限；有滑鼠點得動的桌面工具可以回溯</td></tr>
+<tr><td><strong>Zeabur Dev $5</strong></td><td>跑容器</td><td>容器化，local 用同一個 image；中文介面</td></tr>
+<tr><td><strong>Django</strong></td><td>後端 + <strong>admin 後台</strong> + 使用者系統</td><td>安全預設全開、admin 有繁中、Claude 極熟</td></tr>
+<tr><td><strong>SQLite</strong></td><td>資料</td><td>就是一個檔案，備份等於複製檔案；讓測試可以完全離線秒跑</td></tr>
+<tr><td><strong>Google</strong></td><td>Sheets</td><td>指定必裝</td></tr>
+</table>
+
+<div class="mermaid">
+flowchart LR
+  subgraph L["local（Claude 執行環境）"]
+    L1["同一個 Dockerfile<br/>Django + SQLite"]
+  end
+  subgraph S["staging（Zeabur）"]
+    S1["同一個 image"]
+    S2[("volume: db.sqlite3")]
+    S1 --- S2
+  end
+  subgraph P["prod（Zeabur）"]
+    P1["同一個 image"]
+    P2[("volume: db.sqlite3")]
+    P1 --- P2
+  end
+  G["GitHub<br/>程式碼 + Actions"] --> L
+  G -->|push develop| S
+  G -->|merge main| P
+  G -.->|定時抓 SQLite 檔備份| P2
+</div>
+
+<p>三個環境跑同一個 image，差別只在環境變數和各自獨立的 SQLite 檔案。<strong>備份的解法意外漂亮</strong> —— SQLite 就是一個檔案，備份等於複製檔案，讓 GitHub Actions 定時抓下來即可。這比託管資料庫的備份概念更容易對非技術者解釋。</p>
+
+<h2 id="journey">架構怎麼收斂到這裡</h2>
+
+<p>第一版是「GitHub + Supabase + Cloudflare + Google」四個帳號。收斂過程值得記，因為每一刀都是被一個具體限制推動的。</p>
+
+<ol class="criteria">
+<li><strong>容器化的要求砍掉 Cloudflare。</strong> Workers 跑 V8 isolate，不是容器，本機無法用同一個 image 重現。Vercel、Netlify 同理。</li>
+<li><strong>SQLite 砍掉整個「託管資料庫」層。</strong> 一旦接受初期用 SQLite，Supabase / Neon / 託管 Postgres 全部不需要。</li>
+<li><strong>一度選了 PocketBase</strong>（單一執行檔 = SQLite + auth + admin UI），但它未達 1.0、官方不保證向後相容、主要一人維護、admin 只有英文。</li>
+<li><strong>最後回到 Django。</strong> 它一樣是單容器 + SQLite + 內建 admin + 內建 auth，但多了 20 年成熟度、專職 security team、LTS 版本，<strong>而且 admin 後台有完整繁體中文</strong>。重量從 ~80 MB 變 ~150–250 MB，在這個規模無關痛癢。</li>
+</ol>
+
+<h2 id="backend">後端選型：為什麼是 Django</h2>
+
+<h3>對照三個判準</h3>
+
+<table>
+<tr><th></th><th>輕量</th><th>Claude 熟悉度</th><th>安全</th><th>admin 後台</th></tr>
+<tr><td><strong>Django</strong></td><td>150–250 MB</td><td class="win">極高</td><td class="win">最強</td><td class="win">內建，有繁中</td></tr>
+<tr><td>PocketBase</td><td class="win">50–100 MB</td><td class="lose">低</td><td class="lose">無專職 security team</td><td>內建，只有英文</td></tr>
+<tr><td>Rails 8</td><td class="lose">250–400 MB</td><td>高</td><td class="win">強</td><td class="lose">要外掛套件</td></tr>
+<tr><td>FastAPI</td><td class="win">80–120 MB</td><td class="win">極高</td><td class="lose">什麼都要自己接</td><td class="lose">沒有</td></tr>
+</table>
+
+<h3>安全這條是分水嶺</h3>
+
+<p>Django 的安全機制是<strong>預設開啟、要主動關掉才會出事</strong>：ORM 自動防 SQL injection、模板自動跳脫防 XSS、內建 CSRF token、防點擊劫持 middleware、密碼加鹽 PBKDF2。更重要的是機制面 —— <strong>專職 security team、公開漏洞揭露流程、三年支援的 LTS</strong>。</p>
+
+<p>FastAPI 相反：它是 micro-framework，使用者系統、admin 後台、ORM、CSRF、session、密碼 hash 全部要自己接。<strong>在「Claude 代寫、使用者無法審查」的情境下，任何一塊漏掉就是洞</strong>，而且不會報錯、不會當機，網站看起來完全正常。</p>
+
+<h3>對 Python Taiwan 社群回饋的回應</h3>
+
+<p>社群普遍認為 Django 難學、「很多設定不知道在做什麼」，建議新手從 Flask/FastAPI 開始。<strong>但那串討論的前提是「人要學這個框架」</strong>，我們的情境是「Claude 寫、使用者不學」，所以「難學」權重接近零；反而「內建東西很香」「ORM 太香」這兩個優點權重更高。</p>
+
+<p><strong>不過那個風險沒有消失，只是換了形式</strong> —— 從「學習者不懂」變成「Claude 可能設錯，而沒人發現」。經典災難是 <code>DEBUG = True</code> 忘記關就上線，錯誤頁會把設定和檔案路徑露給所有訪客，網站看起來完全正常。</p>
+
+<p>因應：<strong>kit 提供設定好的 Django 專案樣板</strong>（dev/prod 設定分離、<code>DEBUG</code> 和 <code>SECRET_KEY</code> 從環境變數讀），Claude 不從零建專案；<strong>環境健檢驗證這幾項設定</strong>。</p>
+
+<h2 id="platform">部署平台：Zeabur</h2>
+
+<p>在 <strong>$5/月、每人自己一個帳號</strong>的前提下，Zeabur 和 Railway 很接近。選 Zeabur 的理由是中文介面，以及這次正好要親自驗證它。</p>
+
+<table>
+<tr><th></th><th>Zeabur Dev $5</th><th>Railway Hobby $5</th></tr>
+<tr><td>介面語言</td><td class="win">中文</td><td>英文</td></tr>
+<tr><td>真正的免費層</td><td class="win">有（會休眠）</td><td class="lose">Free 不含任何用量額度，實質不可用</td></tr>
+<tr><td>超支預設行為</td><td>待驗證</td><td class="lose">繼續跑並扣款；硬上限預設關閉、最低 $10</td></tr>
+<tr><td>每服務 CPU/RAM 上限</td><td class="lose">官方定價頁沒寫</td><td class="win">48 GB / 48 vCPU，文件明列</td></tr>
+<tr><td>Log 保留</td><td>7 天</td><td>—</td></tr>
+<tr><td>Claude 熟悉度</td><td class="lose">低</td><td class="win">高</td></tr>
+<tr><td>未來多人集中管理</td><td class="lose">Team $79/月含 3 人，+$24/人</td><td class="win">Pro $20/月人數無上限</td></tr>
+</table>
+
+<p><strong>「Claude 對 Zeabur 不熟」這項權重下修過。</strong> 如果架構是「平台只當跑 Docker 的地方」，Claude 需要的平台特有知識很窄 —— Dockerfile 和環境變數它超熟，看 log 是在 UI 上點。暴露面比原本假設的小。但這代表 <strong>kit 的部署 skill 必須把操作步驟寫死</strong>，不能靠 Claude 自己推，而且 Zeabur 改介面時要跟著改。</p>
+
+<h2 id="git">GitHub vs GitLab</h2>
+
+<table>
+<tr><th></th><th>GitLab.com Free</th><th>GitHub Free</th></tr>
+<tr><td>每個 group 使用者上限</td><td class="lose">5 人</td><td class="win">無上限</td></tr>
+<tr><td>CI 分鐘數</td><td class="lose">400 分鐘/月，公開 repo 也照算</td><td class="win">公開 repo 無上限；私有 2,000 分鐘/月</td></tr>
+<tr><td>超過之後</td><td class="lose">Premium $29/人/月</td><td>Team $4/人/月</td></tr>
+<tr><td>MCP 認證</td><td class="win">OAuth 動態註冊，貼網址就授權</td><td class="lose">遠端 MCP 要貼 Personal Access Token</td></tr>
+<tr><td>MCP 前置條件</td><td class="lose">要先開 GitLab Duo 和 beta 功能</td><td>無</td></tr>
+<tr><td>Claude 熟悉度</td><td>中</td><td class="win">很高</td></tr>
+<tr><td>桌面 GUI 工具</td><td class="lose">無第一方</td><td class="win">GitHub Desktop，滑鼠點就能 commit、回上一版</td></tr>
+</table>
+
+<p><strong>決定性的是 5 人上限</strong>：10 人在 GitLab 是 $290/月，在 GitHub 公開 repo 是 $0。</p>
+
+<p><strong>GitHub Desktop 這點值得單獨講。</strong> 我們選了「放手模式 + git 當保命繩」，那使用者總有一天要自己回溯。GitHub 有滑鼠點得動的桌面工具，GitLab 只能下指令 —— 對非技術者，這是有救和沒救的差別。</p>
+
+<p><strong>建議用公開 repo</strong>（Actions 無上限），代價是任何密鑰外洩就是公開的，所以 kit 會裝 hook 擋 <code>.env</code>。那是防呆不是保險。</p>
+
+<h2 id="rejected">被評估後淘汰的選項</h2>
+
+<table>
+<tr><th>選項</th><th>為什麼淘汰</th></tr>
+<tr><td class="dead">Cloudflare Workers / Pages</td><td>不是容器，本機無法用同一個 image 重現。曾是第一版推薦，被容器化要求推翻</td></tr>
+<tr><td class="dead">Vercel</td><td>非容器；唯一還在收 per-seat（$20/人，10 人 $200/月）</td></tr>
+<tr><td class="dead">Netlify</td><td>非容器；credits 用完會讓所有站台暫停</td></tr>
+<tr><td class="dead">Supabase</td><td>SQLite 之後不需要。Free 只有 2 個 project（跨 org 硬上限）、branching 要付費、7 天不用會暫停、官方明說 MCP 不要接正式資料</td></tr>
+<tr><td class="dead">Neon</td><td>多環境和成本完勝 Supabase（免費 100 專案、10 分支、不暫停），但<strong>要自己寫 admin 頁面</strong>才能看使用者資料 —— 對非技術者不可能</td></tr>
+<tr><td class="dead">PocketBase</td><td>最輕、單一執行檔包辦一切，但未達 1.0 且官方不保證向後相容、主要一人維護、無專職 security team、admin 只有英文</td></tr>
+<tr><td class="dead">Appwrite</td><td>成熟且功能完整，但最低要 2 vCPU / 4 GB RAM 且是多容器，$5 跑兩個環境不夠</td></tr>
+<tr><td class="dead">Directus</td><td>admin UI 最強，但 SQLite 被官方標為「僅供開發」，且 2026 換授權（BSL → MSCL），有商用限制與 license key 機制</td></tr>
+<tr><td class="dead">FastAPI</td><td>輕且 Claude 極熟，但沒有 admin 後台、沒有使用者系統、沒有 CSRF —— 安全責任全落在寫程式的人身上，而這裡寫程式的是 Claude、審查的人看不懂</td></tr>
+<tr><td class="dead">Rails 8</td><td>官方主推 SQLite 上生產，但三者中最重（Ruby VM），且 admin 後台要外掛套件</td></tr>
+<tr><td class="dead">Google Cloud Run</td><td>成本模型最漂亮（免費額度跨 project 共用、真 scale-to-zero、無 seat 費），但 GCP Console 最容易讓非技術者迷路，且必須綁卡</td></tr>
+<tr><td class="dead">Render / Fly.io</td><td>Render 每個 service 固定計費，多一環境多一筆；Fly.io 成本最低但設定最原始</td></tr>
+<tr><td class="dead">GitLab</td><td>免費版每 group 5 人上限、CI 只有 400 分鐘/月、無第一方桌面 GUI</td></tr>
+<tr><td class="dead">Django Ninja</td><td>不是淘汰，是<strong>延後</strong>。網頁由 Django 直接產 HTML 就不需要 API 層。等要做手機 App 或獨立前端時再加，屆時加也不痛</td></tr>
+</table>
+
+<h2 id="cost">成本</h2>
+
+<table>
+<tr><th></th><th>每人每月</th><th>備註</th></tr>
+<tr><td>GitHub（公開 repo）</td><td>$0</td><td>Actions 無上限</td></tr>
+<tr><td>Zeabur Dev</td><td>$5</td><td>3 own servers、7 天 log、可綁 5 個網域、有備份</td></tr>
+<tr><td>Django / SQLite</td><td>$0</td><td>開源</td></tr>
+<tr><td>Google</td><td>$0</td><td>公司已有</td></tr>
+<tr><td><strong>合計</strong></td><td><strong>$5/人/月</strong></td><td></td></tr>
+</table>
+
+<p><strong>實際資源需求很小</strong>，瓶頸不會是機器大小：Django + gunicorn 雙 worker 約 150–250 MB，單 worker 可壓到 ~120 MB。真正的瓶頸是<strong>服務數量 × 常駐時數</strong>。</p>
+
+<h2 id="behavior">Kit 設計 · 行為層</h2>
+
+<p><strong>核心原則：不要問使用者他答不出來的問題。</strong> 非技術者被問「你要用 SQLite 還是 PostgreSQL」只有兩種反應 —— 瞎猜，或去 Google 然後更混亂。兩種都比 Claude 直接決定更糟。</p>
+
+<h3>三支柱</h3>
+
+<p><strong>一、怎麼講話</strong> —— 繁中、白話、術語第一次出現時用括號補一句人話。</p>
+
+<p><strong>二、怎麼動手</strong> —— 放手模式。讀取、產生新檔、跑分析直接做；只有刪除和對外發布才停下來問。每次動完檔案自動 commit。</p>
+
+<p><strong>三、怎麼決定</strong> —— 見下。</p>
+
+<h3>決策規則（三段）</h3>
+
+<ol class="criteria">
+<li><strong>技術決策底下有業務取捨 → 翻譯成業務問題來問。</strong> 不是「不能問」，是「不能用技術的樣子問」。</li>
+<li><strong>底下沒有業務取捨 → Claude 直接決定，寫 ADR。</strong> 密碼用什麼演算法存、檔案怎麼命名、要不要加索引。</li>
+<li><strong>業務答案之間的交互後果 → Claude 自己推導並處理，不再回頭問。</strong></li>
+</ol>
+
+<p><strong>還有一條檢查點：如果一個技術決策翻譯不出業務問題，那是信號</strong> —— 代表 Claude 還沒真的想清楚這個決策會影響什麼，該回頭再想，而不是當作「沒有業務取捨」跳過。</p>
+
+<h3>翻譯的實例（已驗證）</h3>
+
+<table>
+<tr><th>問使用者的樣子</th><th>底下的技術決策</th><th>實測答案</th></tr>
+<tr><td>員工離職後，他填過的班表要保留還是消失？</td><td>soft delete vs hard delete</td><td>全部保留，只是不能登入 → <strong>soft delete</strong></td></tr>
+<tr><td>最多多少人同時用？會開放給外部嗎？</td><td>SQLite vs Postgres</td><td>幾十人、只有內部 → <strong>SQLite 確認夠用</strong></td></tr>
+<tr><td>除了員工和主管，還有第三種人嗎？</td><td>要不要做權限系統</td><td>就兩種 → <strong>Django 內建 <code>is_staff</code> 就夠</strong></td></tr>
+<tr><td>排好的班被改了，需要知道是誰改的嗎？</td><td>要不要做 audit log</td><td>需要且要能查 → <strong>要做 audit log</strong></td></tr>
+</table>
+
+<p><strong>這組實測證明了規則的必要性。</strong> 三題往簡單走，一題往複雜走 —— 而那個往複雜走的（audit log）<strong>正是 Claude 自己絕對會決定省掉的</strong>。「內部小工具、幾十人、不對外」，任何合理的技術判斷都會說不用做稽核。但使用者說要，因為他知道排班會有爭議、有爭議就要有依據。這是業務知識，不是技術判斷。</p>
+
+<p><strong>交互後果的實例</strong>：要能查「誰改的」+ 離職帳號保留 = audit log 會指向已離職的人，所以那些使用者記錄真的不能刪（刪了 audit log 就變成一堆查不到人的 ID）。這是從兩個業務答案推出的技術後果，Claude 要自己接住，不能再回頭問。</p>
+
+<p><strong>翻譯是有損的。</strong> 上表第二題只問了「多少人同時用」，但 SQLite 的限制其實是「同時<strong>寫入</strong>的人數」，資料總量也是因子。所以 skill 要提醒 Claude：翻譯完之後自問「使用者的答案是否足以支撐這個技術決策」，不夠要補問。</p>
+
+<h3>決定了要說，但不要求確認</h3>
+
+<blockquote>資料我存在一個叫 SQLite 的檔案裡 —— 就是一個檔案，簡單、備份容易，你們這個規模夠用。哪天人多到跑不動，我會告訴你要換。</blockquote>
+
+<p>使用者有知情權，但不用承擔他判斷不了的決策責任。反面教材是「你要用 SQLite 還是 PostgreSQL？」</p>
+
+<h3>寫死的預設（使用者不需要知道，但錯了會出事）</h3>
+
+<ul>
+<li>技術棧：Django + SQLite + Zeabur + GitHub</li>
+<li>Django 專案樣板結構，settings 分 dev / prod</li>
+<li><strong><code>DEBUG</code> 一律從環境變數讀，prod 絕不為 true</strong></li>
+<li><code>SECRET_KEY</code> 從環境變數讀，不進 git</li>
+<li><strong>volume 必須在第一次啟動前掛好</strong></li>
+<li>花費上限要設</li>
+</ul>
+
+<h2 id="test">Kit 設計 · 測試</h2>
+
+<p><strong>為什麼對非技術者特別重要：他無法察覺「改 A 壞了 B」。</strong> 他會在三天後發現某功能不見了，但不知道是哪次改壞的。git 能回溯，前提是他得先知道壞了 —— 測試就是那個機制。</p>
+
+<h3>Local 全綠很容易，這是選 Django + SQLite 的意外紅利</h3>
+
+<p>測試用<strong>記憶體裡的 SQLite</strong>，不用起任何服務，<strong>零外部依賴</strong>。全部測試跑完是幾秒鐘的事，完全離線。如果當初留著 Supabase，測試就得連雲端或起 Docker，迭代速度差一個量級。</p>
+
+<p><strong>韌性上的好處</strong>：測試不需要 Docker，只要有 Python。所以就算「Cowork 能不能跑 docker」答案是不行，測試這條路依然成立。</p>
+
+<h3>三道保命繩串起來</h3>
+
+<pre><code>Claude 改了程式碼
+  → 自動跑測試
+  → 綠了才 commit
+  → 紅了不 commit，直接修到綠</code></pre>
+
+<p>結果是 <strong>git 歷史上每一個 commit 都是測試綠的狀態</strong>。回溯到任何一點，拿到的都是能跑的版本。這讓「放手模式」真正安全 —— 不是「反正壞了可以回」，是「隨時可以回到一個確定能跑的版本」。</p>
+
+<h3>測行為，不測實作</h3>
+
+<p>測「員工填了時段之後，主管在後台看得到」，不是「<code>save_shift()</code> 回傳 True」。後者在重構時會壞掉，然後非技術者面對一個他看不懂的紅字。</p>
+
+<h3>測試報告變成「系統能力清單」</h3>
+
+<p>跑完測試產一張<strong>中文 HTML 報告</strong>，列出系統保證會做的每件事：</p>
+
+<pre><code>✅ 員工可以填寫自己的可排班時段
+✅ 主管在後台看得到所有人填的時段
+✅ 同一個人不能重複填同一天
+✅ 沒登入的人看不到別人的資料</code></pre>
+
+<p>對非技術者，這張表同時是三件事：<strong>系統沒壞的證據</strong>、<strong>系統會做什麼的清單</strong>、<strong>跟同事解釋這東西能幹嘛的文件</strong>。而且每次改完自動更新。</p>
+
+<h3>Local 和 CI 的分工有一條不能破的規則</h3>
+
+<p><strong>CI 跑的測試必須是 local 測試的超集，多出來的部分只能是「非得真實部署才驗得了」的東西</strong>（部署煙霧測試）。</p>
+
+<p>破了這條就會出現「我這邊都綠的，為什麼 CI 紅了」—— 非技術者遇到這種狀況會直接卡死，因為他無法在本地重現。</p>
+
+<h2 id="grill">Kit 設計 · 想清楚再做</h2>
+
+<p>基於 Matt Pocock 的 <code>grill-with-docs</code>（MIT）。它比純 <code>grill-me</code> 多做兩件事：訪談中即時維護 <strong><code>CONTEXT.md</code> 詞彙表</strong>，並在遇到難以回頭的決策時寫 <strong>ADR</strong>。理論根據是 DDD 的 ubiquitous language。</p>
+
+<h3>為什麼對非技術者比想像中重要</h3>
+
+<p><strong>他的問題不只是想太淺，是講的話沒有固定意義。</strong> 今天說「員工」、明天說「同事」、後天說「人員」—— 可能指同一件事，也可能指正職／兼職／外包。Claude 每次照字面理解，系統裡就同時出現 <code>employee</code>、<code>staff</code>、<code>worker</code> 三張表。而他<strong>永遠不會發現</strong>，因為他看不懂程式碼。</p>
+
+<p><code>CONTEXT.md</code> 把「員工」定義死一次，之後資料表、介面文字、測試報告全用同一個詞。<strong>這是他唯一看得懂、也唯一有資格審查的技術產物。</strong></p>
+
+<p><strong>ADR 則是「技術決策要告知」的落地形式</strong> —— 比口頭講一句好，因為那句話會消失在對話記錄裡，ADR 留在 repo 裡。三個月後想問「當初為什麼用這個」，有地方查。</p>
+
+<h3>四項改造（原版是寫給工程師的）</h3>
+
+<ol class="criteria">
+<li><strong>技術問題翻譯成業務問題再問</strong>，不直接 grill 技術決策。這是最重要的改造，跟行為層的決策規則是同一套。</li>
+<li><code>CONTEXT.md</code> 用繁中寫 —— 它是給使用者讀的。</li>
+<li>ADR 的「為什麼」用白話 —— 不是「to avoid N+1 queries」，是「這樣資料多的時候不會變慢」。</li>
+<li>語氣改掉 —— 原版的 relentless 對工程師是優點，對非技術者是壓迫感。改成一次一題、每題附建議答案、可以說不知道。</li>
+</ol>
+
+<h3>這條線把整個 kit 串起來</h3>
+
+<pre><code>使用者講的話 → CONTEXT.md 詞彙表 → 程式碼裡的名字 → 測試報告上的中文</code></pre>
+
+<p>四個地方同一套詞。他在測試報告上看到「員工」，那就真的對應到程式碼裡的 <code>Employee</code>。而且這是<strong>可驗證的</strong> —— 可以檢查測試報告上出現的名詞是否都在 <code>CONTEXT.md</code> 有定義。</p>
+
+<h2 id="memory">Kit 設計 · 記憶</h2>
+
+<h3>Claude Desktop 內建的記憶分好幾層，而且互不相通</h3>
+
+<table>
+<tr><th>層</th><th>範圍</th><th>Cowork 能用嗎</th></tr>
+<tr><td>Chat 記憶</td><td>自動從對話摘要，每 24 小時更新</td><td class="lose">不能 —— 明確不支援 Cowork</td></tr>
+<tr><td>Chat Projects 記憶</td><td>每個 project 各自獨立</td><td class="lose">不能</td></tr>
+<tr><td>Cowork Projects 記憶</td><td>該 project 內的任務之間共用</td><td class="win">可以</td></tr>
+<tr><td>Global instructions</td><td>所有 Cowork session</td><td class="win">可以</td></tr>
+<tr><td>Folder instructions</td><td>選定的本機資料夾</td><td class="win">可以，<strong>Claude 能自己更新</strong></td></tr>
+</table>
+
+<p><strong>最容易踩的誤解：他在 Chat 裡跟 Claude 講過的事，進 Cowork 之後 Claude 不知道。</strong> 這要寫進給使用者的說明。</p>
+
+<h3>不需要另做 vault，因為 repo 就是記憶</h3>
+
+<p>前面設計的三樣東西本質上就是記憶，而且都是檔案、都進 git：<code>CONTEXT.md</code> 詞彙表、<code>docs/adr/</code> 決策紀錄、folder instructions。</p>
+
+<table>
+<tr><th></th><th>repo 當記憶</th><th>Obsidian vault</th></tr>
+<tr><td>使用者看得到、能改</td><td class="win">✅</td><td>✅</td></tr>
+<tr><td>有版本、能回溯</td><td class="win">✅ git 記錄「這條規則什麼時候改的」</td><td class="lose">❌</td></tr>
+<tr><td>跟程式碼綁在一起不會漂移</td><td class="win">✅</td><td class="lose">❌</td></tr>
+<tr><td>要另外維護</td><td class="win">不用</td><td class="lose">要</td></tr>
+</table>
+
+<p>vault 那套（frontmatter、tags、folder notes、retrieval 規則）是為了跨十幾個 repo 的知識累積。非技術者只有一個專案，那些機制對他是純負擔。</p>
+
+<h3>但內建記憶是黑盒子，要補兩條規則</h3>
+
+<p>問題情境很具體：Claude 從 project memory 撈到一個過時的結論（三個月前使用者說過「不用做稽核紀錄」，後來改主意但只在對話裡講），Claude 照舊的做，而使用者完全不知道為什麼。<strong>這是一個不可見的行為來源。</strong></p>
+
+<ol class="criteria">
+<li><strong>重要結論不能只留在記憶裡，必須寫進 repo 的檔案。</strong> 記憶可以記「這個人喜歡簡短回答」這種偏好，但凡是會影響系統長相的決定，一律落成 <code>CONTEXT.md</code> 或 ADR。<strong>記憶是加速器，不是真相來源。</strong></li>
+<li><strong>folder instructions 進 git。</strong> 它可以被 Claude 自己更新 —— 好用，但也代表 Claude 可能悄悄改掉規則。進 git 之後自動 commit hook 會記下來，使用者能看到「Claude 在某天改了這條規矩」。</li>
+</ol>
+
+<p><strong>驗法</strong>：把 Cowork 的 project memory 清掉，開一個全新 session，Claude 讀 repo 就該能接續工作，不會問「這個之前決定過什麼」。</p>
+
+<h2 id="kit">Kit 組成總表</h2>
+
+<table>
+<tr><th>類型</th><th>名稱</th><th>做什麼</th></tr>
+<tr><td>—</td><td><strong>開場白</strong></td><td>要傳給對方的那段話。必須自帶最小行為指示，因為貼進去的當下 plugin 還沒裝</td></tr>
+<tr><td>hook</td><td>開場注入</td><td>每次對話開始載入行為層三支柱</td></tr>
+<tr><td>hook</td><td>自動 commit</td><td>測試綠 → commit；紅 → 不 commit</td></tr>
+<tr><td>hook</td><td>密鑰擋門</td><td>阻止 <code>.env</code> 之類被 commit</td></tr>
+<tr><td>skill</td><td>安裝嚮導</td><td>帶對方走完三家的註冊與授權，一步一畫面；含花費上限的強制步驟</td></tr>
+<tr><td>skill</td><td>環境健檢</td><td>綠燈報告。硬條件：資料在重新部署後還在、花費上限已設、prod 的 <code>DEBUG</code> 是關的</td></tr>
+<tr><td>skill</td><td><strong>想清楚再做</strong></td><td>grill-with-docs 改造版，維護 <code>CONTEXT.md</code> 與 ADR</td></tr>
+<tr><td>skill</td><td>Excel 報表</td><td>讀本機 .xlsx，產單檔 HTML 報表（含圖表），雙擊就開</td></tr>
+<tr><td>skill</td><td>部署</td><td>從改 code 到拿到網址，含 staging 先看再上 prod，以及 volume 的正確順序</td></tr>
+<tr><td>樣板</td><td>Django 專案骨架</td><td>settings 分 dev/prod、環境變數、Dockerfile、測試骨架、CI workflow</td></tr>
+<tr><td>connector</td><td>GitHub、Google</td><td>遠端 MCP（Zeabur 沒有遠端 MCP，走 CLI）</td></tr>
+</table>
+
+<h2 id="gotchas">已知限制與坑（一次列完）</h2>
+
+<ol class="criteria">
+<li><strong>貼一段 prompt 沒辦法全自動裝好。</strong> 裝 plugin、裝 connector、改全域設定都是 UI 動作，Anthropic 刻意鎖在使用者手動同意後面，防的就是有人用一段文字騙你的 Claude 裝東西。能做的是 Claude 一步步帶他點完。</li>
+<li><strong>Cowork 的程式碼跑在 Anthropic 遠端，不是對方電腦上。</strong> 它只透過桌面 App 讀寫指定資料夾。所以在對方電腦上跑 localhost 服務實質做不到。</li>
+<li><strong>掛載 volume 會清空目錄。</strong> 先把服務跑起來、有了資料，之後才想到加 volume —— <strong>那一刻資料全部消失</strong>。觸發條件是一個很自然的操作順序，這是整套架構最危險的坑。</li>
+<li><strong>啟用 volume 後 Zeabur 失去零停機重啟</strong>，每次部署斷線幾秒。</li>
+<li><strong>SQLite 不能水平擴展，並發寫入有限。</strong> 內部工具綽綽有餘，但這是有天花板的選擇。</li>
+<li><strong>Django 的 <code>DEBUG = True</code> 上線是經典災難</strong> —— 錯誤頁會把設定和檔案路徑露給所有訪客，網站看起來完全正常。用樣板 + 健檢擋。</li>
+<li><strong>Zeabur 的官方定價頁沒寫 runtime 的 CPU/RAM 上限。</strong> 它列的 <code>2C4G</code> 是建置時的 CI 規格。第三方資料說 Free 是 1vCPU/2GB、Dev 是 2vCPU/4GB，無官方來源。</li>
+<li><strong>Zeabur 沒有遠端 MCP</strong>（只有本機 stdio 版，Cowork 裝不了），要走 <code>npx zeabur</code> CLI。</li>
+<li><strong>Zeabur 未來多人集中管理很貴</strong>：Team $79/月含 3 人，+$24/人。10 人 $247/月。</li>
+<li><strong>Google Sheets 官方 connector 只能讀</strong>，不能改儲存格、不能加註解、不能把 xlsx 轉成 Sheets。Excel 反而比較順。</li>
+<li><strong>Chat 的記憶不會帶進 Cowork。</strong> 兩邊是分開的。</li>
+<li><strong>公開 repo 換來無限 CI，代價是任何密鑰外洩就是公開的。</strong></li>
+</ol>
+
+<h2 id="trial">試跑清單</h2>
+
+<h3>A. Zeabur 部署那條路</h3>
+
+<ol class="criteria">
+<li><strong>「3 own servers」到底是什麼意思？</strong> 我讀成 BYOC 自帶伺服器的數量，不是服務數量上限 —— 但不確定。<strong>如果是服務數上限，我們的 4 個服務配置就不夠</strong>（staging 和 prod 各一個 app + 一個 volume），架構要調整。<strong>這是進去第一件該確認的事。</strong></li>
+<li>從零到 Django 跑起來、能開 <code>/admin</code>，花幾分鐘、卡在哪一步。</li>
+<li><strong>驗證 volume 的順序坑</strong>：故意試「先跑起來、寫一筆資料 → 再掛 volume」，確認資料是不是真的被清空。這決定安裝流程裡 volume 那步必須排在哪。</li>
+<li><strong>寫一筆資料 → 觸發重新部署 → 確認那筆資料還在。</strong> 這條會直接變成 spec 的核心成功條件。</li>
+<li>部署一次斷線多久；綁自訂網域要幾步。</li>
+<li>Dev 方案每服務的 CPU/RAM 上限實際是多少（官方頁沒寫）。</li>
+</ol>
+
+<h3>B. 兩個 Cowork 的未知（比選哪家平台更重要）</h3>
+
+<table>
+<tr><th>問題</th><th>如果是「不行」會怎樣</th></tr>
+<tr><td><strong>Cowork 的執行環境能不能跑 <code>docker</code>？</strong></td><td>local 這層無法容器化，三環境一致只能做到 staging 和 prod 兩層。<strong>但測試不受影響</strong>（Django + SQLite 只要 Python）</td></tr>
+<tr><td><strong>Cowork 能不能加自訂遠端 connector 並自動跳 OAuth？</strong></td><td>授權要對方自己在 Connectors 頁面一個一個加，安裝流程從 3 步變 6 步</td></tr>
+</table>
+
+<h3>C. 成本與超支保護</h3>
+
+<ol class="criteria">
+<li><strong>Zeabur Dev $5 額度用完是「暫停服務」還是「自動扣款」？</strong> Free 層已知是暫停不扣款，Dev 層無官方確認。如果 Dev 層也是暫停，那對非技術者是比 Railway 更安全的預設值。</li>
+<li>掛 4 個服務跑一週，看燒掉多少額度。</li>
+<li>如果 Zeabur 是「會扣款」，就要找它的花費上限設定在哪，並寫進安裝嚮導的強制步驟。</li>
+</ol>
+
+<h2 id="decide">待決事項</h2>
+
+<p>架構已定，剩下的都要靠試跑回答。試跑結果回來後就寫 spec。</p>
+
+<ol class="criteria">
+<li>Zeabur「3 own servers」的真實含義 —— 可能推翻服務拆分方式。</li>
+<li>Cowork 能不能跑 docker —— 決定 local 環境的形狀。</li>
+<li>Cowork 的 connector 授權流程 —— 決定安裝步數。</li>
+<li>Zeabur 超支時的預設行為 —— 決定安裝嚮導要不要加「設上限」這個強制步驟。</li>
+</ol>
+
+<h2 id="src">資料來源</h2>
+
+<ul>
+<li><a href="https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork">Get started with Claude Cowork</a> — folder instructions、standing instructions、plugins</li>
+<li><a href="https://claude.com/docs/cowork/guide/plugins">Install plugins（Cowork）</a> — plugin 組成、GitHub repo 當 marketplace、容量上限</li>
+<li><a href="https://support.claude.com/en/articles/13364135-use-claude-cowork-safely">Use Claude Cowork safely</a> — 程式碼跑在 Anthropic 遠端</li>
+<li><a href="https://support.claude.com/en/articles/14116274-organize-your-tasks-with-projects-in-claude-cowork">Cowork projects</a> — project 層級的記憶</li>
+<li><a href="https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context">Claude chat search and memory</a> — 記憶不支援 Cowork</li>
+<li><a href="https://support.claude.com/en/articles/10166901-use-google-workspace-connectors">Use Google Workspace connectors</a> — Sheets 只讀不能改格</li>
+<li><a href="https://zeabur.com/pricing">Zeabur Pricing</a> — Free / Dev $5 / Pro $19 / Team $79+$24/seat</li>
+<li><a href="https://zeabur.com/docs/en-US/data-management/volumes">Zeabur Volumes</a> — 掛載會清空目錄、失去零停機重啟</li>
+<li><a href="https://zeabur.com/docs/en-US/deploy/customize-prebuilt">Zeabur Customize Docker image</a> — 手動部署自訂 image 的步驟</li>
+<li><a href="https://docs.railway.com/reference/usage-limits">Railway Usage Limits</a> — 硬上限預設關閉、最低 $10（已淘汰，留作對照）</li>
+<li><a href="https://docs.github.com/billing/managing-billing-for-github-actions/about-billing-for-github-actions">GitHub Actions billing</a> — 公開 repo 無上限</li>
+<li><a href="https://docs.gitlab.com/user/model_context_protocol/mcp_server/">GitLab MCP server</a> — OAuth 動態註冊、需開 Duo</li>
+<li><a href="https://github.com/mattpocock/skills">mattpocock/skills</a> — <code>grill-me</code> / <code>grill-with-docs</code> 原始版本，MIT</li>
+<li><a href="https://pocketbase.io/docs/">PocketBase docs</a> — v0.x、官方不保證向後相容（已淘汰，留作紀錄）</li>
+<li><a href="https://directus.com/docs/self-hosting/requirements">Directus self-hosting requirements</a> — SQLite 標為僅供開發（已淘汰，留作紀錄）</li>
+</ul>
+
+<blockquote>價格與免費額度變動頻繁，且部分數字來自第三方彙整文章。寫 spec 前會針對最終選中的那一組，逐項對照官方定價頁再確認一次。</blockquote>
+
+</main>
+<script src="/static/mermaid.min.js"></script>
+<script>try{mermaid.initialize({startOnLoad:false,theme:"default"});mermaid.run();}catch(e){console.error(e);}</script>
+</body></html>
