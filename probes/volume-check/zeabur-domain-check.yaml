@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://schema.zeabur.app/template.json
+#
+# Probe C: a service with an HTTP port, used only to find out whether binding a
+# custom domain is gated behind a paid plan.
+#
+# Stock nginx is enough - nothing about the app matters here, we just need
+# something with an exposed HTTP port so a domain can be attached to it.
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: domain-check
+spec:
+  description: Throwaway probe - is custom domain binding plan-gated?
+  services:
+    - name: probe-web
+      template: PREBUILT
+      spec:
+        source:
+          image: nginx:alpine
+        ports:
+          - id: web
+            port: 80
+            type: HTTP

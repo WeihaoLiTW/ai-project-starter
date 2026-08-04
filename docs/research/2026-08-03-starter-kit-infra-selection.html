@@ -136,6 +136,48 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 
 <p><strong>而且 template YAML 的 <code>volumes</code> 宣告確實生效</strong> —— 實驗組的 <code>/data</code> 是真的 ext4 掛載點。這代表部署設定（含 volume）可以整份寫在 repo 裡，不必存在某個人的瀏覽器操作記憶裡。</p>
 
+<h3>網域：自訂網域不受方案限制（先前查不到，現在確認）</h3>
+
+<p>先前把三件事混在一起講了，實測後分清楚：</p>
+
+<table>
+<tr><th></th><th>是什麼</th><th>誰有</th></tr>
+<tr><td>預設網址</td><td><code>xxx.zeabur.app</code>，<strong>子網域名稱可以自己指定</strong></td><td class="win">所有方案，免費</td></tr>
+<tr><td>綁自己的網域</td><td>例如 <code>paiban.公司.com</code>，要自己去網域商設 DNS</td><td class="win"><strong>Free 就能綁（已實測）</strong></td></tr>
+<tr><td>在 Zeabur 買網域</td><td>站內直接購買，最多 5 個</td><td>這才是 Dev $5 的功能</td></tr>
+</table>
+
+<p><strong>實測結果：</strong></p>
+
+<table>
+<tr><th>測試</th><th>結果</th></tr>
+<tr><td>綁免費 <code>.zeabur.app</code> 子網域</td><td class="win">成功，名稱可自訂</td></tr>
+<tr><td>綁自訂網域（Free 方案）</td><td class="win"><strong>成功，不受方案限制</strong></td></tr>
+<tr><td>HTTPS 連通</td><td class="win">HTTP 200，第一次嘗試就通，<strong>建立到可連不到 30 秒</strong></td></tr>
+<tr><td>TLS 憑證</td><td class="win">自動簽發（ZeroSSL ECC DV），CN 正確</td></tr>
+<tr><td>HTTP/2 + HTTP/3</td><td class="win"><code>HTTP/2 200</code>，回應帶 <code>alt-svc: h3</code></td></tr>
+</table>
+
+<p><strong>三個結論：</strong></p>
+
+<ol class="criteria">
+<li><strong>Dev $5 的「購買網域」確定不需要</strong> —— 它賣的是「在 Zeabur 站內買」，而綁自己的網域 Free 就能做。</li>
+<li><strong>預設網址比預期好用</strong>：子網域名稱可以自己取，所以能是 <code>某公司-排班.zeabur.app</code> 這種看得懂的名字，不是隨機字串。<strong>所以 v1 不碰自訂網域不是將就，是真的夠。</strong></li>
+<li><strong>自訂網域隨時能走，不必提前告知對方「以後要升級」</strong> —— 消掉一個原本擔心的限制。</li>
+</ol>
+
+<div class="warn">
+<p><strong>但有個給非技術者的陷阱</strong>：測試時用了一個根本不擁有的網域（<code>probe-check.example.com</code>），Zeabur <strong>照樣接受</strong>。它不在建立時驗證所有權，只給 DNS 設定指示。所以<strong>打錯字不會當場報錯</strong>，要等使用者發現網址連不上才知道。若之後要支援自訂網域，安裝嚮導得自己做一次拼字確認。</p>
+</div>
+
+<h3>如果真要綁自訂網域，最麻煩的不是 Zeabur 這一側</h3>
+
+<p>DNS 設定要在<strong>買網域的那家公司的後台</strong>做，不是在 Zeabur。使用者要在兩個網站之間來回，而 A 記錄、CNAME、TTL 這些詞對他是完全的黑話。<strong>前面設計的「技術問題翻譯成業務問題」在這裡幫不上忙</strong>，因為這不是取捨，是純粹的操作步驟。</p>
+
+<p>另外 Zeabur 文件明確提到：網域掛在 Cloudflare 後面時<strong>不能選 Full (Strict) SSL 模式</strong>，否則會連不上。這是典型「兩個服務各自都對、合起來壞掉」的問題，而錯誤畫面看不出原因。</p>
+
+<p>這兩點加起來，是 v1 避開自訂網域的主要理由。</p>
+
 <h3>退款是按比例退（先前查不到，現在確認）</h3>
 
 <blockquote>申請退款：申請剩餘時間的按比例退款。伺服器將被註銷，退款將記入您的帳戶餘額。</blockquote>
