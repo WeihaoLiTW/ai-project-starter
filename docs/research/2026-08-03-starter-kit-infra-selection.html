@@ -46,6 +46,7 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 
 <nav class="toc"><p class="toc-title">目錄</p><ul>
 <li><a href="#q">這份在回答什麼</a></li>
+<li><a href="#verified"><strong>實測結果（2026-08-04）</strong></a></li>
 <li><a href="#fixed">已定案</a></li>
 <li><a href="#final">最終架構</a></li>
 <li><a href="#journey">架構怎麼收斂到這裡</a></li>
@@ -82,6 +83,98 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 <li><strong>認證是瀏覽器點一下，不是複製貼上 token</strong>。每一道「去後台找 API key 貼過來」都是實際會放棄的地方。</li>
 </ol>
 
+<h2 id="verified">實測結果（2026-08-04）</h2>
+
+<p>租了一台真的機器把整條路走過一遍。以下每一項都是實際跑出來的，不是查文件得到的。</p>
+
+<h3>Zeabur 的模式已經變了 —— 這是最大的發現</h3>
+
+<p><strong>共享叢集全面廢除。</strong> CLI 直接回：</p>
+
+<pre><code>Shared clusters are deprecated.
+Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
+
+<p>所以 Zeabur 不再是「$5/月的共享 PaaS」，而是<strong>你自己伺服器的控制台</strong>。定價頁那一列的原文是關鍵：「Manageable own servers — Servers you purchased and own <strong>elsewhere</strong>」。方案費是管理費，不含算力。</p>
+
+<p><strong>真實成本 = 方案費 + 主機租金。</strong> Free 方案 $0 + 主機租金，或 Dev $5 + 主機租金。</p>
+
+<h3>不是「Install K3s」，是重裝成 ZeaburOS</h3>
+
+<p>我先前查到的官方文件說「點 Install K3s」，<strong>已經過時</strong>。實際流程是：設定 → 危險區域 → 重裝作業系統 → 選 ZeaburOS。畫面明確警告<strong>會清空磁碟</strong>。</p>
+
+<p>可選 OS：ZeaburOS（最新版）、Ubuntu 24.04 LTS、Debian（即將推出）、Fedora（即將推出）。說明是「選 ZeaburOS 重裝後直接成為部署節點；選標準發行版則拿回一台標準 VPS」。</p>
+
+<p><strong>重裝耗時約 2 分鐘</strong>，完成後 <code>HasK3s</code> 變 true。ZeaburOS 自己回報是 Ubuntu 24.04.4 LTS 基底。</p>
+
+<h3>記憶體實測 —— $3 的 2 GB 機器實質不可用</h3>
+
+<table>
+<tr><th></th><th>實測值</th></tr>
+<tr><td>標稱 4 GB，實際總量</td><td>3659 MB</td></tr>
+<tr><td>剛開機（純 Ubuntu）已用</td><td>502 MB</td></tr>
+<tr><td><strong>ZeaburOS + K3s + 2 個 trivial 容器已用</strong></td><td class="lose"><strong>1503 MB</strong></td></tr>
+<tr><td>可用</td><td>2156 MB</td></tr>
+<tr><td>Swap</td><td>1987 MB（未使用）</td></tr>
+<tr><td>磁碟</td><td>59 GB 總量，已用 7.9 GB</td></tr>
+</table>
+
+<div class="warn">
+<p><strong>結論：$3 那台 2 GB 的跑不動這個架構。</strong> 光 ZeaburOS 加 K3s 就吃 1.5 GB，只剩 0.5 GB 給應用程式。兩個 Django 環境要 300–500 MB，等於零餘裕，部署時的記憶體尖峰必定 OOM —— 而 OOM 對非技術者是完全無法診斷的狀況。<strong>4 GB 是下限，不是選配。</strong></p>
+</div>
+
+<h3>Volume 對照實驗 —— 結論與本機 Docker 一致</h3>
+
+<p>用兩份 template YAML 建了對照組（不掛 volume）和實驗組（掛 <code>/data</code>），各寫一筆 marker 後重啟容器：</p>
+
+<table>
+<tr><th></th><th><code>/data</code> 掛載狀態</th><th>重啟後 marker</th></tr>
+<tr><td><strong>對照組</strong>（無 volume）</td><td>無獨立掛載</td><td class="lose"><strong>GONE</strong></td></tr>
+<tr><td><strong>實驗組</strong>（有 volume）</td><td><code>/dev/vda2 on /data type ext4</code></td><td class="win"><strong>PRESENT</strong></td></tr>
+</table>
+
+<p><strong>證實了資料消失的真正原因</strong>：不是「掛載 volume 會清空目錄」，而是<strong>沒掛 volume 的期間，寫進去的東西活不過容器重建</strong>。對照組根本沒有掛載動作，資料就已經沒了。</p>
+
+<p><strong>而且 template YAML 的 <code>volumes</code> 宣告確實生效</strong> —— 實驗組的 <code>/data</code> 是真的 ext4 掛載點。這代表部署設定（含 volume）可以整份寫在 repo 裡，不必存在某個人的瀏覽器操作記憶裡。</p>
+
+<h3>退款是按比例退（先前查不到，現在確認）</h3>
+
+<blockquote>申請退款：申請剩餘時間的按比例退款。伺服器將被註銷，退款將記入您的帳戶餘額。</blockquote>
+
+<p>所以短期驗證不會虧整個月。另外<strong>自動續約預設是開啟的</strong>，不關就會一直續。</p>
+
+<h3>付款有兩條路，錯誤訊息只講一半</h3>
+
+<p>沒有付款方式時租用會失敗：<code>please bind a credit card or recharge credits first</code>。實際上台灣／中國區使用者常見的路徑是<strong>充值</strong>（可用支付寶，轉成 Zeabur Credits），不是綁卡 —— 而設定頁上只看得到「充值」。</p>
+
+<p>這一輪就是因為只看到「綁卡」那半而走錯方向。安裝嚮導必須把兩條路都列出來。</p>
+
+<h3>CLI 與網頁的能力缺口</h3>
+
+<table>
+<tr><th>要做的事</th><th>CLI</th><th>實際只能</th></tr>
+<tr><td>安裝 ZeaburOS / K3s</td><td class="lose">沒有指令</td><td>網頁</td></tr>
+<tr><td>掛載 volume</td><td class="lose">沒有指令</td><td>template YAML（可）或網頁</td></tr>
+<tr><td>刪除主機</td><td class="lose">沒有指令</td><td>網頁</td></tr>
+<tr><td>列出 environment</td><td class="lose">沒有指令</td><td>從網頁 URL 的 <code>?envID=</code> 撈</td></tr>
+<tr><td>租主機、建專案、部署、exec、重啟、看 log</td><td class="win">都有</td><td>—</td></tr>
+</table>
+
+<p><strong>環境 ID 那條特別麻煩</strong>：<code>service exec</code> 需要 <code>--env-id</code>，而 <code>context set env</code> 只吃 ID 不吃名稱，但 CLI 沒有任何指令能列出環境。只能開網頁看 URL。</p>
+
+<p><strong>另一個限制</strong>：Docker image（PREBUILT）部署的服務<strong>不能 in-place redeploy</strong>，會回 <code>You must bind a GitHub repository to the service to allow redeploying in-place</code>。正式專案會綁 GitHub 所以不受影響，但探針只能用 <code>service restart</code>。</p>
+
+<h3>錯誤訊息品質是實質風險</h3>
+
+<p>這一輪撞到三個，都是非技術者會卡死的類型：</p>
+
+<ol class="criteria">
+<li>租用失敗只說「綁卡或充值」，<strong>沒說在哪裡做</strong>，而且兩條路只有一條在設定頁上看得到。</li>
+<li>CLI 先印 <code>Server rented successfully</code>，接著才報付款失敗 —— <strong>兩個訊息互相矛盾</strong>。</li>
+<li>ZeaburOS 沒裝就建專案，只回 <code>An error occurred, please try again later</code> —— <strong>既沒說原因也沒說下一步</strong>。這個最危險。</li>
+</ol>
+
+<p>因應方式：安裝嚮導必須把「充值 → 租主機 → 重裝 ZeaburOS → 建專案」寫成硬性順序，而不是等使用者撞到錯誤才發現。</p>
+
 <h2 id="fixed">已定案</h2>
 
 <table>
@@ -91,7 +184,9 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 <tr><td>載體</td><td>public GitHub repo 當 marketplace，裡面放一包 plugin</td></tr>
 <tr><td>Repo</td><td>直接放進現有的 <code>ai-project-starter</code></td></tr>
 <tr><td>後端</td><td><strong>Django</strong> + SQLite（先不加 Django Ninja，需要獨立前端時再加）</td></tr>
-<tr><td>部署</td><td><strong>Zeabur Dev $5/月</strong></td></tr>
+<tr><td>部署</td><td><strong>Zeabur Free 方案 + 自租主機</strong>。實測方案費不含算力，Dev $5 買的是功能（log 7 天、自動備份、Zeabur AI），而<strong>自動備份我們用 GitHub Actions 抓 SQLite 檔自己解了</strong>，所以 Free 就夠</td></tr>
+<tr><td>主機</td><td>Tencent Cloud Tokyo，2 vCPU / <strong>4 GB</strong> / 60 GB，<strong>$4/月</strong>。4 GB 是實測下限 —— 2 GB 那台光 ZeaburOS + K3s 就吃掉 1.5 GB</td></tr>
+<tr><td>總成本</td><td><strong>$4/月</strong>（原本估 $8，因為 Free 方案夠用而砍半）</td></tr>
 <tr><td>主動性</td><td>放手模式：只有刪除與對外發布才問，其餘直接做</td></tr>
 <tr><td>保命繩</td><td>三道：自動 commit、測試綠才 commit、環境健檢</td></tr>
 <tr><td>Google Sheets</td><td>v1 只承諾「讀進來 + 整份產出」，<strong>不承諾逐格編輯</strong>（官方 connector 做不到）</td></tr>
