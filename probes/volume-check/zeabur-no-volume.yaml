@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://schema.zeabur.app/template.json
+#
+# Probe A: the same service with NO volume, to establish the baseline.
+#
+# Deploy with:  zeabur template deploy -f zeabur-no-volume.yaml
+# Then:         zeabur service exec  -> sh -c 'echo before-volume > /data/marker'
+#               zeabur service redeploy
+#               zeabur service exec  -> cat /data/marker      (expect: gone)
+#
+# This is the control case. Local Docker says the data disappears here, before
+# any volume is ever involved - which is the real reason data gets lost, not
+# the "mounting wipes the directory" warning in the docs.
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: volume-probe-no-volume
+spec:
+  description: Throwaway probe - container storage WITHOUT a volume
+  services:
+    - name: probe-no-volume
+      template: PREBUILT
+      spec:
+        source:
+          image: alpine:3.20
+          command: ["sleep"]
+          args: ["infinity"]

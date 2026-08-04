@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://schema.zeabur.app/template.json
+#
+# Probe B: a service WITH a persistent volume mounted at /data.
+#
+# Deploy with:  zeabur template deploy -f zeabur-with-volume.yaml
+# Then:         zeabur service exec  -> sh -c 'echo after-volume > /data/marker'
+#               zeabur service redeploy
+#               zeabur service exec  -> cat /data/marker      (expect: still there)
+#
+# The volumes block is the whole point of this file: it is the declarative
+# equivalent of clicking "add volume" in the web UI, which means deployment
+# config can live in the repo instead of in someone's browser history.
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: volume-probe-with-volume
+spec:
+  description: Throwaway probe - container storage WITH a volume
+  services:
+    - name: probe-with-volume
+      template: PREBUILT
+      spec:
+        source:
+          image: alpine:3.20
+          command: ["sleep"]
+          args: ["infinity"]
+        volumes:
+          - id: data
+            dir: /data
