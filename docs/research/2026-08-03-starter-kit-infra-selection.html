@@ -170,13 +170,21 @@ flowchart LR
 
 <h2 id="platform">部署平台：Zeabur</h2>
 
-<p>在 <strong>$5/月、每人自己一個帳號</strong>的前提下，Zeabur 和 Railway 很接近。選 Zeabur 的理由是中文介面，以及這次正好要親自驗證它。</p>
+<p>在 <strong>$5/月、每人自己一個帳號</strong>的前提下，Zeabur 和 Railway 很接近。原本選 Zeabur 的理由只有中文介面，但實測後多了一個更重要的：<strong>額度用完是暫停服務、不扣款</strong>。</p>
+
+<div class="pick">
+<p><strong>超支保護這一項，Zeabur 的預設值明顯比 Railway 安全。</strong></p>
+<p>Zeabur：額度用完 → 服務暫停，資料保留，下期額度重置後恢復。<br>
+Railway：額度用完 → <strong>繼續跑並扣款</strong>；硬上限是選擇性的、預設關閉、而且最低只能設 $10。</p>
+<p>對非技術者，「服務停了」比「收到一張沒預期的帳單」好處理太多 —— 停了他會來問你，扣款可能三個月後才發現。這也讓安裝嚮導少一個強制步驟（不用帶他設花費上限）。</p>
+</div>
 
 <table>
 <tr><th></th><th>Zeabur Dev $5</th><th>Railway Hobby $5</th></tr>
 <tr><td>介面語言</td><td class="win">中文</td><td>英文</td></tr>
 <tr><td>真正的免費層</td><td class="win">有（會休眠）</td><td class="lose">Free 不含任何用量額度，實質不可用</td></tr>
-<tr><td>超支預設行為</td><td>待驗證</td><td class="lose">繼續跑並扣款；硬上限預設關閉、最低 $10</td></tr>
+<tr><td>超支預設行為</td><td class="win"><strong>暫停服務，不扣款</strong>（已驗證）</td><td class="lose">繼續跑並扣款；硬上限預設關閉、最低 $10</td></tr>
+<tr><td>環境數上限</td><td>3 個（已驗證）—— 正好 local / staging / prod</td><td>—</td></tr>
 <tr><td>每服務 CPU/RAM 上限</td><td class="lose">官方定價頁沒寫</td><td class="win">48 GB / 48 vCPU，文件明列</td></tr>
 <tr><td>Log 保留</td><td>7 天</td><td>—</td></tr>
 <tr><td>Claude 熟悉度</td><td class="lose">低</td><td class="win">高</td></tr>
@@ -407,8 +415,8 @@ flowchart LR
 <tr><td>hook</td><td>開場注入</td><td>每次對話開始載入行為層三支柱</td></tr>
 <tr><td>hook</td><td>自動 commit</td><td>測試綠 → commit；紅 → 不 commit</td></tr>
 <tr><td>hook</td><td>密鑰擋門</td><td>阻止 <code>.env</code> 之類被 commit</td></tr>
-<tr><td>skill</td><td>安裝嚮導</td><td>帶對方走完三家的註冊與授權，一步一畫面；含花費上限的強制步驟</td></tr>
-<tr><td>skill</td><td>環境健檢</td><td>綠燈報告。硬條件：資料在重新部署後還在、花費上限已設、prod 的 <code>DEBUG</code> 是關的</td></tr>
+<tr><td>skill</td><td>安裝嚮導</td><td>帶對方走完三家的註冊與授權，一步一畫面（Zeabur 超支會自動暫停，所以不需要花費上限那一步）</td></tr>
+<tr><td>skill</td><td>環境健檢</td><td>綠燈報告。硬條件：資料在重新部署後還在、prod 的 <code>DEBUG</code> 是關的、<code>SECRET_KEY</code> 不是預設值</td></tr>
 <tr><td>skill</td><td><strong>想清楚再做</strong></td><td>grill-with-docs 改造版，維護 <code>CONTEXT.md</code> 與 ADR</td></tr>
 <tr><td>skill</td><td>Excel 報表</td><td>讀本機 .xlsx，產單檔 HTML 報表（含圖表），雙擊就開</td></tr>
 <tr><td>skill</td><td>部署</td><td>從改 code 到拿到網址，含 staging 先看再上 prod，以及 volume 的正確順序</td></tr>
@@ -421,8 +429,9 @@ flowchart LR
 <ol class="criteria">
 <li><strong>貼一段 prompt 沒辦法全自動裝好。</strong> 裝 plugin、裝 connector、改全域設定都是 UI 動作，Anthropic 刻意鎖在使用者手動同意後面，防的就是有人用一段文字騙你的 Claude 裝東西。能做的是 Claude 一步步帶他點完。</li>
 <li><strong>Cowork 的程式碼跑在 Anthropic 遠端，不是對方電腦上。</strong> 它只透過桌面 App 讀寫指定資料夾。所以在對方電腦上跑 localhost 服務實質做不到。</li>
-<li><strong>掛載 volume 會清空目錄。</strong> 先把服務跑起來、有了資料，之後才想到加 volume —— <strong>那一刻資料全部消失</strong>。觸發條件是一個很自然的操作順序，這是整套架構最危險的坑。</li>
+<li><strong>沒掛 volume 之前，寫進去的資料活不過下一次部署。</strong> 這是整套架構最危險的坑，而且<strong>本機 Docker 已實測確認</strong>（見 <code>probes/volume-check/</code>）。原本以為原因是「掛載 volume 會清空目錄」，實測顯示不是 —— 根本沒有掛載動作，資料就已經沒了，因為它們待在容器的臨時層，容器一換就沒。標準 Docker 掛 named volume 的行為其實相反（把 image 內容複製進空 volume）。<strong>實務規則不變：volume 必須在第一次啟動前掛好</strong>，但講法要改成「沒掛 volume 的期間資料都是暫時的」—— 更準確，也更好對非技術者解釋。</li>
 <li><strong>啟用 volume 後 Zeabur 失去零停機重啟</strong>，每次部署斷線幾秒。</li>
+<li><strong>Zeabur Dev 每個專案最多 3 個環境</strong>（已驗證）。正好對上 local / staging / prod，夠用但沒餘裕 —— 想再加一個 demo 環境就要升級。</li>
 <li><strong>SQLite 不能水平擴展，並發寫入有限。</strong> 內部工具綽綽有餘，但這是有天花板的選擇。</li>
 <li><strong>Django 的 <code>DEBUG = True</code> 上線是經典災難</strong> —— 錯誤頁會把設定和檔案路徑露給所有訪客，網站看起來完全正常。用樣板 + 健檢擋。</li>
 <li><strong>Zeabur 的官方定價頁沒寫 runtime 的 CPU/RAM 上限。</strong> 它列的 <code>2C4G</code> 是建置時的 CI 規格。第三方資料說 Free 是 1vCPU/2GB、Dev 是 2vCPU/4GB，無官方來源。</li>
@@ -435,13 +444,21 @@ flowchart LR
 
 <h2 id="trial">試跑清單</h2>
 
-<h3>A. Zeabur 部署那條路</h3>
+<h3>已驗證（2026-08-03）</h3>
+
+<table>
+<tr><th>問題</th><th>結果</th><th>對設計的影響</th></tr>
+<tr><td>「3 own servers」是什麼？</td><td class="win">環境數，不是服務數 —— 3 個，正好 local / staging / prod</td><td>卡點解除，4 個服務的配置可行；但沒餘裕加第四個環境</td></tr>
+<tr><td>額度用完會怎樣？</td><td class="win">暫停服務，不扣款</td><td>安裝嚮導少一個強制步驟；Zeabur 在超支保護上贏 Railway</td></tr>
+<tr><td>資料何時會消失？<br/>（本機 Docker 實測）</td><td class="lose">沒掛 volume 之前寫的資料，活不過下一次部署</td><td>「volume 第一次啟動前掛好」是硬性順序；但原因不是「掛載會清空」</td></tr>
+<tr><td>掛 volume 後資料能否跨部署存活？<br/>（本機 Docker 實測）</td><td class="win">能</td><td>核心成功條件的機制成立，待在 Zeabur 上覆驗</td></tr>
+</table>
+
+<h3>A. Zeabur 上還要驗的</h3>
 
 <ol class="criteria">
-<li><strong>「3 own servers」到底是什麼意思？</strong> 我讀成 BYOC 自帶伺服器的數量，不是服務數量上限 —— 但不確定。<strong>如果是服務數上限，我們的 4 個服務配置就不夠</strong>（staging 和 prod 各一個 app + 一個 volume），架構要調整。<strong>這是進去第一件該確認的事。</strong></li>
+<li><strong>用 <code>probes/volume-check/</code> 在 Zeabur 上重跑那四步。</strong> 本機 Docker 的結果不一定等於 Zeabur 的實作。重點是第 5 步 —— 掛了 volume 之後重新部署，資料還在。</li>
 <li>從零到 Django 跑起來、能開 <code>/admin</code>，花幾分鐘、卡在哪一步。</li>
-<li><strong>驗證 volume 的順序坑</strong>：故意試「先跑起來、寫一筆資料 → 再掛 volume」，確認資料是不是真的被清空。這決定安裝流程裡 volume 那步必須排在哪。</li>
-<li><strong>寫一筆資料 → 觸發重新部署 → 確認那筆資料還在。</strong> 這條會直接變成 spec 的核心成功條件。</li>
 <li>部署一次斷線多久；綁自訂網域要幾步。</li>
 <li>Dev 方案每服務的 CPU/RAM 上限實際是多少（官方頁沒寫）。</li>
 </ol>
@@ -454,24 +471,21 @@ flowchart LR
 <tr><td><strong>Cowork 能不能加自訂遠端 connector 並自動跳 OAuth？</strong></td><td>授權要對方自己在 Connectors 頁面一個一個加，安裝流程從 3 步變 6 步</td></tr>
 </table>
 
-<h3>C. 成本與超支保護</h3>
+<h3>C. 成本</h3>
 
-<ol class="criteria">
-<li><strong>Zeabur Dev $5 額度用完是「暫停服務」還是「自動扣款」？</strong> Free 層已知是暫停不扣款，Dev 層無官方確認。如果 Dev 層也是暫停，那對非技術者是比 Railway 更安全的預設值。</li>
-<li>掛 4 個服務跑一週，看燒掉多少額度。</li>
-<li>如果 Zeabur 是「會扣款」，就要找它的花費上限設定在哪，並寫進安裝嚮導的強制步驟。</li>
-</ol>
+<p>超支保護已驗證為「暫停不扣款」，所以只剩用量實測：<strong>掛 4 個服務跑一週，看燒掉多少額度</strong>，確認 $5 夠不夠。</p>
 
 <h2 id="decide">待決事項</h2>
 
-<p>架構已定，剩下的都要靠試跑回答。試跑結果回來後就寫 spec。</p>
+<p>架構已定，四題已驗兩題（環境數、超支行為），剩下兩題不影響架構、只影響安裝流程的形狀。</p>
 
 <ol class="criteria">
-<li>Zeabur「3 own servers」的真實含義 —— 可能推翻服務拆分方式。</li>
-<li>Cowork 能不能跑 docker —— 決定 local 環境的形狀。</li>
-<li>Cowork 的 connector 授權流程 —— 決定安裝步數。</li>
-<li>Zeabur 超支時的預設行為 —— 決定安裝嚮導要不要加「設上限」這個強制步驟。</li>
+<li><strong>Cowork 能不能跑 <code>docker</code></strong> —— 決定 local 環境的形狀。不行的話 local 退化成「直接連 staging 的資料寫程式」，但<strong>測試不受影響</strong>（Django + SQLite 只要 Python）。</li>
+<li><strong>Cowork 能不能加自訂遠端 connector 並自動跳 OAuth</strong> —— 決定安裝流程是 3 步還是 6 步。</li>
+<li><strong>Zeabur 上覆驗 volume 行為</strong> —— 本機 Docker 已驗，平台實作待確認。</li>
 </ol>
+
+<p>這三題都不會推翻架構，所以 <strong>spec 可以先寫</strong>，把它們列為 spec 裡的待驗項目即可。</p>
 
 <h2 id="src">資料來源</h2>
 
