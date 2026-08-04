@@ -33,21 +33,37 @@
 
 實務規則因此是：**volume 必須在第一次啟動前掛好。**
 
-## 在 Zeabur 上重跑一次
+## Zeabur 上的實測結果（2026-08-04）— 已完成
 
-Zeabur 的實作可能與標準 Docker 不同，所以要在平台上再驗一次。
+實際租了一台 Tencent Tokyo 2 vCPU / 4 GB 跑完，**結論與本機 Docker 一致**。
 
-1. 從 GitHub 部署本 repo，**Root Directory 設成 `probes/volume-check`**，
-   port 填 `8080`
-2. **先不掛 volume** → 開 `/write?msg=before-volume` → 再開 `/` 確認看得到
-3. **重新部署（仍不掛 volume）** → 開 `/` → 預期只剩新的 BOOT
-4. **掛 volume 到 `/data`** → 開 `/write?msg=after-volume`
-5. **再重新部署** → 開 `/` → **預期 `after-volume` 那行還在**
+最後沒有用上面那支 HTTP 程式，改用更簡單的做法：`alpine` + `sleep infinity`
+兩個服務（一個掛 volume、一個不掛），用 `zeabur service exec` 直接讀寫檔案。
+不用開 port、不用公開網址、不用 GitHub，而且看得比網頁清楚。模板見
+`zeabur-no-volume.yaml` 和 `zeabur-with-volume.yaml`。
 
-第 5 步是重點，它同時驗證核心成功條件（資料跨重新部署存活）。
+| | `/data` 掛載狀態 | 重啟後 marker |
+|---|---|---|
+| 對照組（無 volume） | 無獨立掛載 | **GONE** |
+| 實驗組（有 volume） | `/dev/vda2 on /data type ext4` | **PRESENT** |
 
-第 3 步若結果與本機不同（資料還在），代表 Zeabur 預設就有某種持久化，
-那是好消息，要記錄下來。
+**template YAML 的 `volumes` 宣告確實生效** —— 實驗組的 `/data` 是真的 ext4
+掛載點。所以部署設定（含 volume）可以整份寫在 repo 裡，不必存在某個人的
+瀏覽器操作記憶裡。
+
+### 過程中撞到的平台限制
+
+- **PREBUILT（Docker image）服務不能 in-place redeploy**，會回
+  `You must bind a GitHub repository to the service to allow redeploying in-place`。
+  改用 `service restart`，效果一樣（容器重建）。
+- **`service exec` 需要 `--env-id`，但 CLI 沒有任何指令能列出環境。**
+  只能開網頁從 URL 的 `?envID=` 撈。
+- **記憶體**：ZeaburOS + K3s + 兩個 trivial 容器就吃掉 1503 MB / 3659 MB。
+  這代表 2 GB 的機器跑不動實際架構。
+
+完整分析見
+
+    docs/research/2026-08-03-starter-kit-infra-selection.html
 
 ## 本機自己跑
 
