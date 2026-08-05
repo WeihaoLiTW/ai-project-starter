@@ -205,6 +205,29 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 
 <p><strong>另一個限制</strong>：Docker image（PREBUILT）部署的服務<strong>不能 in-place redeploy</strong>，會回 <code>You must bind a GitHub repository to the service to allow redeploying in-place</code>。正式專案會綁 GitHub 所以不受影響，但探針只能用 <code>service restart</code>。</p>
 
+<h3>Cowork 可以被企業政策整個關掉</h3>
+
+<p>測試時發現 Roku 的企業帳號<strong>在網頁版和桌面版都沒有 Cowork 分頁</strong>（側邊只有 Home / Chat 和 Code，展開 More 也沒有）。</p>
+
+<p><strong>這是 spec 的前提條件</strong>：如果對方公司之後升到 Team 或 Enterprise，管理員沒開啟的話整套 kit 就用不了。<strong>安裝的第一步應該是「確認你看得到 Cowork」，看不到就別往下走</strong> —— 否則對方會走完一半才發現做不下去。</p>
+
+<h3>兩個 Cowork 未知數：用設計繞掉，不等驗證</h3>
+
+<p>原本列了兩題待驗（Cowork 能不能跑 docker、能不能自動跳 connector 授權）。因為手上沒有可用的 Cowork 帳號，改成<strong>讓兩種答案都可接受</strong>。</p>
+
+<p><strong>Q1「能不能跑 docker」→ 架構不需要它。</strong></p>
+
+<ul>
+<li><strong>建置在 Zeabur 那邊做</strong> —— 它從 repo 讀 Dockerfile，用自己的建置機器 build，不是在使用者機器上 build</li>
+<li><strong>測試只需要 Python</strong> —— Django + 記憶體 SQLite，不需要容器</li>
+</ul>
+
+<p>所以 docker 只有 Zeabur 會用到。<strong>代價是誠實的</strong>：local 不再是「跟 prod 位元級相同的容器」，而是「跑同一份程式碼的 Python 環境」。但真正重要的性質還在 —— staging 和 prod 是同一個 image，local 跑同一份程式碼與同一份相依清單。這個規模夠用，而且換來架構不依賴無法驗證的能力。</p>
+
+<p><strong>Q2「能不能自動跳 connector 授權」→ 照最壞情況寫。</strong></p>
+
+<p>能自動是 3 步，不能是 6 步，兩種都能完成安裝。所以<strong>安裝嚮導照「不能自動」寫</strong>，明確帶對方一個一個加。若實際可自動，多餘步驟會是無害的空轉（Claude 發現已連上就跳過）。反過來寫才會出事 —— 假設能自動、結果不能，對方會卡在一個沒有指示的畫面。</p>
+
 <h3>錯誤訊息品質是實質風險</h3>
 
 <p>這一輪撞到三個，都是非技術者會卡死的類型：</p>
@@ -232,6 +255,9 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 <tr><td>主動性</td><td>放手模式：只有刪除與對外發布才問，其餘直接做</td></tr>
 <tr><td>保命繩</td><td>三道：自動 commit、測試綠才 commit、環境健檢</td></tr>
 <tr><td>Google Sheets</td><td>v1 只承諾「讀進來 + 整份產出」，<strong>不承諾逐格編輯</strong>（官方 connector 做不到）</td></tr>
+<tr><td>網址</td><td>預設 <code>xxx.zeabur.app</code>，<strong>子網域名稱自訂</strong>、自動 HTTPS。v1 不碰自訂網域（DNS 那段對非技術者太抽象）</td></tr>
+<tr><td>備份</td><td>GitHub Actions 排程 → 私有 repo 的 Release，<strong>保留 3 個月</strong>。必須用 SQLite 的一致性快照機制（<code>VACUUM INTO</code>），<strong>不能直接複製檔案</strong></td></tr>
+<tr><td>安裝前提</td><td><strong>先確認看得到 Cowork 分頁</strong> —— 企業政策可以整個關掉它</td></tr>
 </table>
 
 <h2 id="final">最終架構</h2>
@@ -614,15 +640,26 @@ Railway：額度用完 → <strong>繼續跑並扣款</strong>；硬上限是選
 
 <h2 id="decide">待決事項</h2>
 
-<p>架構已定，四題已驗兩題（環境數、超支行為），剩下兩題不影響架構、只影響安裝流程的形狀。</p>
+<p><strong>沒有了 —— 待驗清單已清空，spec 可以寫。</strong></p>
+
+<table>
+<tr><th>原本待驗</th><th>結果</th></tr>
+<tr><td>「3 own servers」的真實含義</td><td class="win">已驗：是可管理的專屬主機數，不是環境數</td></tr>
+<tr><td>超支時的預設行為</td><td class="win">已驗：暫停不扣款</td></tr>
+<tr><td>Zeabur 上的 volume 行為</td><td class="win">已驗：與本機 Docker 一致</td></tr>
+<tr><td>自訂網域是否需要付費方案</td><td class="win">已驗：Free 就能綁</td></tr>
+<tr><td>Cowork 能不能跑 docker</td><td>改為<strong>設計上不需要</strong>（建置在 Zeabur、測試只要 Python）</td></tr>
+<tr><td>Cowork connector 授權流程</td><td>改為<strong>照最壞情況寫</strong>安裝嚮導</td></tr>
+</table>
+
+<p>最後兩項沒有實測（手上沒有啟用 Cowork 的帳號），但都已經用設計繞開，<strong>兩種答案都不會讓架構或安裝流程失敗</strong>。</p>
+
+<h3>剩下的是業務決策，不是技術未知</h3>
 
 <ol class="criteria">
-<li><strong>Cowork 能不能跑 <code>docker</code></strong> —— 決定 local 環境的形狀。不行的話 local 退化成「直接連 staging 的資料寫程式」，但<strong>測試不受影響</strong>（Django + SQLite 只要 Python）。</li>
-<li><strong>Cowork 能不能加自訂遠端 connector 並自動跳 OAuth</strong> —— 決定安裝流程是 3 步還是 6 步。</li>
-<li><strong>Zeabur 上覆驗 volume 行為</strong> —— 本機 Docker 已驗，平台實作待確認。</li>
+<li><strong>備份保留期：3 個月</strong>（已定）。所以是保留 90 天日備份，不需要「每月一份留一年」那層。</li>
+<li><strong>log 只留 48 小時是否可接受</strong>（Dev $5 可延到 7 天）。這取決於對方多久才會回報問題 —— 是判斷題不是技術題，寫成 spec 裡明擺著的取捨。</li>
 </ol>
-
-<p>這三題都不會推翻架構，所以 <strong>spec 可以先寫</strong>，把它們列為 spec 裡的待驗項目即可。</p>
 
 <h2 id="src">資料來源</h2>
 
