@@ -253,6 +253,85 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 
 <p><strong>還有一個未知</strong>：個人 Pro 帳號的網路預設是什麼不確定（實測的是 Enterprise 帳號）。但既然設計成走 MCP、不依賴 shell 網路，這題的重要性已經降低。</p>
 
+<h3>為什麼是 Cowork 而不是 Code</h3>
+
+<p>兩者底層是同一個引擎（官方：both are Claude Code underneath），差別在執行模型與包裝。</p>
+
+<table>
+<tr><th></th><th>Cowork</th><th>Code</th></tr>
+<tr><td>執行位置</td><td>雲端沙箱（預設）或本機 Linux VM</td><td><strong>使用者的實體機器</strong> + OS 層沙箱</td></tr>
+<tr><td>網路</td><td class="lose">組織設定全開／全關，可能沒權限改</td><td class="win"><strong>按需詢問放行</strong>，不需管理員權限</td></tr>
+<tr><td>docker</td><td class="lose">沒有</td><td class="win">有，若使用者電腦裝了</td></tr>
+<tr><td><strong>Windows</strong></td><td class="win">官方支援</td><td class="lose"><strong>沙箱不支援原生 Windows，要 WSL2</strong></td></tr>
+<tr><td>介面</td><td class="win">「描述一個任務」+ 三段權限模式</td><td class="lose">session 列表、model／thinking 選擇器、Bypass permissions</td></tr>
+<tr><td>排程任務</td><td class="win">內建</td><td>無</td></tr>
+</table>
+
+<p><strong>Code 在網路模型上明顯較好</strong>（按需詢問 vs 組織全開全關），這是 Cowork 的實質缺點 —— 我們靠「所有網路操作走 MCP」繞過去。</p>
+
+<p><strong>但 Windows 那條讓 Code 實質不可行。</strong> 沙箱起不來時 Claude Code 的預設行為是「顯示警告，然後不沙箱直接跑指令」—— 也就是<strong>用完整機器權限執行</strong>。對習慣按同意的非技術者，那比沒有沙箱更糟，因為他不知道自己失去了保護。</p>
+
+<p>要拿回沙箱就得裝 WSL2，而那條路有<strong>三個 Claude 幫不上的斷點</strong>：以管理員身分開 PowerShell（無法提權）、重新開機（session 斷掉、上下文遺失）、設定 Linux 使用者密碼（不該由 Claude 處理）。裝完還有一個永久問題：專案放在 WSL 內部檔案系統才有效能，但那樣<strong>使用者用檔案總管找不到自己的檔案</strong>。</p>
+
+<p><strong>結論：選 Cowork 的主要理由從「介面友善」升級為「Windows 上非技術者走得通」。</strong> 介面友善變成附帶好處。若哪天對象變成純 Mac 使用者，Code 會是更好的選擇。</p>
+
+<h3>Windows 的實際要求，以及兩個靜默失敗的陷阱</h3>
+
+<table>
+<tr><th></th><th>實際要求</th></tr>
+<tr><td>虛擬化功能</td><td class="win"><strong>Virtual Machine Platform</strong>（不是完整 Hyper-V）→ <strong>家用版也有</strong></td></tr>
+<tr><td>安裝權限</td><td class="lose"><strong>需要系統管理員</strong>。沒有的人裝得起 Claude，但 <strong>Cowork 不會出現</strong></td></tr>
+<tr><td>安裝檔</td><td class="lose"><strong>必須用 <code>.msix</code></strong> —— 用 <code>.exe</code> 裝出來的沒有 Cowork</td></tr>
+<tr><td>硬體</td><td>需要硬體虛擬化</td></tr>
+</table>
+
+<div class="warn">
+<p><strong>兩個陷阱是同一種形態：東西裝起來了、看起來正常、功能不在，而且沒有任何訊息說明為什麼。</strong> 非技術者下載到 <code>.exe</code> 版本會得到一個「能用但找不到 Cowork」的 Claude，然後以為是自己找不到。</p>
+<p><strong>官方有個東西正好解這個：readiness check</strong> —— 不用安裝、不用登入的小程式，跑一下就告訴你這台機器能不能跑 Cowork。<strong>這應該是安裝嚮導的第一步</strong>，而且它把「家用版還是專業版」這種猜測完全繞開，直接問機器本人。</p>
+</div>
+
+<p><strong>一個影響判斷的變化</strong>：官方現在說 Cowork session <strong>預設跑在雲端</strong>，本機 VM 只有本機執行模式才需要。所以 Windows 的 VM 要求沒有原本以為的那麼硬。但雲端模式的網路同樣受組織設定管，所以下面的設計兩種模式都成立。</p>
+
+<h3>網路限制影響哪些操作，以及 MCP 的覆蓋狀況</h3>
+
+<p><strong>不需要網路的（完全不受影響）：</strong></p>
+
+<table>
+<tr><th>操作</th><th>為什麼不受影響</th></tr>
+<tr><td>讀寫工作資料夾的檔案</td><td>本機</td></tr>
+<tr><td><strong>跑測試</strong>（Django + 記憶體 SQLite）</td><td>本機，零外部依賴</td></tr>
+<tr><td>產 HTML 報表</td><td>本機</td></tr>
+<tr><td>讀寫本機 Excel <code>.xlsx</code></td><td>本機</td></tr>
+<tr><td>算排班、資料分析</td><td>本機</td></tr>
+<tr><td><strong>git commit / log / diff / checkout</strong></td><td><strong>git 本機操作不需要網路</strong></td></tr>
+</table>
+
+<p><strong>最後一條很重要</strong>：三道保命繩（自動 commit、測試綠才 commit、隨時可回溯）<strong>完全不受網路限制影響</strong>。最關鍵的安全機制不依賴網路。</p>
+
+<p><strong>需要網路的，以及 MCP 覆蓋狀況：</strong></p>
+
+<table>
+<tr><th>操作</th><th>有 MCP 嗎</th><th>備註</th></tr>
+<tr><td>GitHub：建 repo、讀寫檔案、開 PR、看 Actions</td><td class="win">官方遠端 MCP</td><td>不受 egress 限制</td></tr>
+<tr><td>Zeabur：建專案、部署、看 log、exec</td><td class="win">官方本機 MCP</td><td>但第一次要 npx 下載它</td></tr>
+<tr><td>Google Sheets 讀取</td><td class="win">官方 connector</td><td>只讀，寫不了</td></tr>
+<tr><td>查文件、搜尋</td><td class="win">web fetch／search</td><td>官方明確不受 egress 限制</td></tr>
+<tr><td><strong><code>pip install</code></strong></td><td class="lose"><strong>沒有，而且不可能有</strong></td><td>MCP 是工具協定，不是套件管理器</td></tr>
+<tr><td><code>git push</code></td><td>部分</td><td>MCP 能用 API 寫檔案，但那會建立自己的 commit，跟本地歷史脫節 —— 變成兩套歷史</td></tr>
+</table>
+
+<div class="pick">
+<p><strong>最小網路需求：模式選「套件管理器 + 指定網域」，網域清單只加 <code>github.com</code>。</strong></p>
+<table>
+<tr><th>要開什麼</th><th>為什麼</th></tr>
+<tr><td>套件管理器</td><td>為了 <code>pip install</code> —— <strong>無法繞過</strong>，沒網路就裝不了 Django</td></tr>
+<tr><td><code>github.com</code></td><td>為了 <code>git push</code> —— 可以繞過，但繞法會產生兩套 git 歷史，對方回溯時會困惑</td></tr>
+<tr><td>Zeabur</td><td class="win"><strong>不用加</strong> —— 走官方 MCP</td></tr>
+<tr><td>Google</td><td class="win"><strong>不用加</strong> —— 走官方 connector</td></tr>
+</table>
+<p>比起「全部網域」這是明顯收斂的權限。<strong>如果對方的環境連這個都不能改，要誠實告訴他這套做不了</strong>，而不是讓他裝到一半才發現。</p>
+</div>
+
 <h3>connector 授權：照最壞情況寫</h3>
 
 <p>能不能自動跳 OAuth 沒測出來。能自動是 3 步，不能是 6 步，兩種都能完成安裝。所以<strong>安裝嚮導照「不能自動」寫</strong>，明確帶對方一個一個加。若實際可自動，多餘步驟會是無害的空轉。反過來寫才會出事 —— 假設能自動、結果不能，對方會卡在一個沒有指示的畫面。</p>
@@ -286,7 +365,9 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 <tr><td>Google Sheets</td><td>v1 只承諾「讀進來 + 整份產出」，<strong>不承諾逐格編輯</strong>（官方 connector 做不到）</td></tr>
 <tr><td>網址</td><td>預設 <code>xxx.zeabur.app</code>，<strong>子網域名稱自訂</strong>、自動 HTTPS。v1 不碰自訂網域（DNS 那段對非技術者太抽象）</td></tr>
 <tr><td>備份</td><td>GitHub Actions 排程 → 私有 repo 的 Release，<strong>保留 3 個月</strong>。必須用 SQLite 的一致性快照機制（<code>VACUUM INTO</code>），<strong>不能直接複製檔案</strong></td></tr>
-<tr><td>安裝前提</td><td><strong>先確認看得到 Cowork 分頁</strong> —— 企業政策可以整個關掉它</td></tr>
+<tr><td>介面</td><td><strong>Cowork</strong>（不是 Code）。決定性理由是 Windows —— Code 的沙箱不支援原生 Windows，要 WSL2，那有三個 Claude 幫不上的斷點</td></tr>
+<tr><td>安裝前提</td><td><strong>第一步跑官方 readiness check</strong>（不用安裝不用登入）。Windows 另外要：管理員權限、<strong><code>.msix</code> 安裝檔（不是 <code>.exe</code>）</strong>、Virtual Machine Platform（家用版也有）</td></tr>
+<tr><td>網路</td><td>需要「套件管理器 + <code>github.com</code>」。<strong>其餘全走 MCP</strong> —— MCP 不受 egress 限制</td></tr>
 </table>
 
 <h2 id="final">最終架構</h2>
