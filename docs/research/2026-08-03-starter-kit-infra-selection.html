@@ -205,28 +205,57 @@ Please rent a Server and use server-XXXXXXXX as the region code.</code></pre>
 
 <p><strong>另一個限制</strong>：Docker image（PREBUILT）部署的服務<strong>不能 in-place redeploy</strong>，會回 <code>You must bind a GitHub repository to the service to allow redeploying in-place</code>。正式專案會綁 GitHub 所以不受影響，但探針只能用 <code>service restart</code>。</p>
 
-<h3>Cowork 可以被企業政策整個關掉</h3>
+<h3>Cowork 在哪、以及它有兩種執行模式</h3>
 
-<p>測試時發現 Roku 的企業帳號<strong>在網頁版和桌面版都沒有 Cowork 分頁</strong>（側邊只有 Home / Chat 和 Code，展開 More 也沒有）。</p>
+<p><strong>Cowork 不是側邊欄分頁，是輸入框裡的模式切換</strong>（Chat / Cowork）。一開始在側邊欄找不到而誤判「這個帳號沒有 Cowork」。</p>
 
-<p><strong>這是 spec 的前提條件</strong>：如果對方公司之後升到 Team 或 Enterprise，管理員沒開啟的話整套 kit 就用不了。<strong>安裝的第一步應該是「確認你看得到 Cowork」，看不到就別往下走</strong> —— 否則對方會走完一半才發現做不下去。</p>
+<table>
+<tr><th></th><th>雲端 session（預設，beta）</th><th><strong>本機 session</strong>（要下載一次性套件）</th></tr>
+<tr><td>agent 迴圈</td><td>Anthropic 伺服器</td><td><strong>在使用者電腦上原生執行</strong></td></tr>
+<tr><td>程式碼執行</td><td>伺服器沙箱，session 結束即銷毀</td><td><strong>專屬 Linux VM</strong>（macOS 用 Apple Virtualization、Windows 用 Hyper-V）</td></tr>
+<tr><td>plugin MCP server</td><td>—</td><td><strong>原生執行，不在 VM 裡</strong></td></tr>
+</table>
 
-<h3>兩個 Cowork 未知數：用設計繞掉，不等驗證</h3>
+<h3>本機 VM 實測（Apple Silicon，2026-08-05）</h3>
 
-<p>原本列了兩題待驗（Cowork 能不能跑 docker、能不能自動跳 connector 授權）。因為手上沒有可用的 Cowork 帳號，改成<strong>讓兩種答案都可接受</strong>。</p>
+<table>
+<tr><th></th><th>實測值</th></tr>
+<tr><td>系統</td><td>Ubuntu 22.04.5 LTS，<strong>aarch64</strong></td></tr>
+<tr><td>資源</td><td><strong>4 核 / 3904 MB</strong></td></tr>
+<tr><td>Python / node / git / curl</td><td class="win">都在（Python 3.10.12、node v22、git 2.34）</td></tr>
+<tr><td><strong>docker</strong></td><td class="lose"><strong>沒有</strong></td></tr>
+<tr><td>sqlite3 命令列工具</td><td class="lose">沒有（但 Python 內建 sqlite3 模組，Django 不受影響）</td></tr>
+<tr><td><strong>對外連線</strong></td><td class="lose"><strong>全部 000，連 google.com 都不通</strong></td></tr>
+</table>
 
-<p><strong>Q1「能不能跑 docker」→ 架構不需要它。</strong></p>
+<p><strong>docker 確定沒有</strong>，所以「設計上不需要 docker」不是繞過未知，是繞過一個確定的限制。VM 是 aarch64 也不影響 —— image 由 Zeabur 在伺服器端 build，本機只跑 Python 測試。</p>
 
-<ul>
-<li><strong>建置在 Zeabur 那邊做</strong> —— 它從 repo 讀 Dockerfile，用自己的建置機器 build，不是在使用者機器上 build</li>
-<li><strong>測試只需要 Python</strong> —— Django + 記憶體 SQLite，不需要容器</li>
-</ul>
+<h3>網路全封不是壞掉，是預設值 —— 而且有個更好的解法</h3>
 
-<p>所以 docker 只有 Zeabur 會用到。<strong>代價是誠實的</strong>：local 不再是「跟 prod 位元級相同的容器」，而是「跑同一份程式碼的 Python 環境」。但真正重要的性質還在 —— staging 和 prod 是同一個 image，local 跑同一份程式碼與同一份相依清單。這個規模夠用，而且換來架構不依賴無法驗證的能力。</p>
+<p>網路設定在 <strong>Organization settings → Capabilities → Code execution</strong>，<strong>Enterprise 組織預設就是「不給網路」</strong>。三種模式：關閉 / 套件管理器 + 指定網域 / 全部網域。<strong>改了要開新對話才生效。</strong></p>
 
-<p><strong>Q2「能不能自動跳 connector 授權」→ 照最壞情況寫。</strong></p>
+<div class="pick">
+<p><strong>關鍵發現：MCP 不受出站限制。</strong></p>
+<p>官方明講「Network egress permissions don't apply to the web fetch or web search tools or MCPs」。而本機模式下，plugin 的 MCP server 是<strong>在使用者電腦上原生執行、不在 VM 裡</strong>，所以用的是主機網路。</p>
+<table>
+<tr><th>要連網的事</th><th>走 shell</th><th>走 MCP</th></tr>
+<tr><td>GitHub 操作</td><td class="lose">網路關掉就掛</td><td class="win">官方遠端 MCP，不受限</td></tr>
+<tr><td>Zeabur 操作</td><td class="lose">網路關掉就掛</td><td class="win">官方本機 MCP，原生執行</td></tr>
+<tr><td>Google Sheets</td><td>—</td><td class="win">官方 connector</td></tr>
+</table>
+<p><strong>所以 kit 應該把需要網路的操作都走 MCP 而不是 shell。</strong> 這比「叫使用者去改設定」穩得多 —— 在企業環境裡他可能根本沒權限改那個設定。</p>
+<p>順帶更正：先前說「Zeabur 只有本機 stdio MCP，Cowork 用不了」是錯的。本機模式下它反而是優勢。</p>
+</div>
 
-<p>能自動是 3 步，不能是 6 步，兩種都能完成安裝。所以<strong>安裝嚮導照「不能自動」寫</strong>，明確帶對方一個一個加。若實際可自動，多餘步驟會是無害的空轉（Claude 發現已連上就跳過）。反過來寫才會出事 —— 假設能自動、結果不能，對方會卡在一個沒有指示的畫面。</p>
+<h3>Cowork 可以被企業政策限制</h3>
+
+<p>Cowork 本身和它的網路存取都受組織設定管控。<strong>安裝的第一步應該是「確認你看得到 Cowork 切換、而且能用」</strong>，不行就別往下走 —— 否則對方會走完一半才發現做不下去。</p>
+
+<p><strong>還有一個未知</strong>：個人 Pro 帳號的網路預設是什麼不確定（實測的是 Enterprise 帳號）。但既然設計成走 MCP、不依賴 shell 網路，這題的重要性已經降低。</p>
+
+<h3>connector 授權：照最壞情況寫</h3>
+
+<p>能不能自動跳 OAuth 沒測出來。能自動是 3 步，不能是 6 步，兩種都能完成安裝。所以<strong>安裝嚮導照「不能自動」寫</strong>，明確帶對方一個一個加。若實際可自動，多餘步驟會是無害的空轉。反過來寫才會出事 —— 假設能自動、結果不能，對方會卡在一個沒有指示的畫面。</p>
 
 <h3>錯誤訊息品質是實質風險</h3>
 
@@ -648,11 +677,12 @@ Railway：額度用完 → <strong>繼續跑並扣款</strong>；硬上限是選
 <tr><td>超支時的預設行為</td><td class="win">已驗：暫停不扣款</td></tr>
 <tr><td>Zeabur 上的 volume 行為</td><td class="win">已驗：與本機 Docker 一致</td></tr>
 <tr><td>自訂網域是否需要付費方案</td><td class="win">已驗：Free 就能綁</td></tr>
-<tr><td>Cowork 能不能跑 docker</td><td>改為<strong>設計上不需要</strong>（建置在 Zeabur、測試只要 Python）</td></tr>
-<tr><td>Cowork connector 授權流程</td><td>改為<strong>照最壞情況寫</strong>安裝嚮導</td></tr>
+<tr><td>Cowork 能不能跑 docker</td><td class="win">已驗：<strong>不能</strong>。設計上本來就不需要，所以不影響</td></tr>
+<tr><td>Cowork 的網路可用性</td><td class="win">已驗：本機 VM 預設<strong>全封</strong>（Enterprise 預設），但<strong>MCP 不受限</strong> → 需要網路的操作全走 MCP</td></tr>
+<tr><td>Cowork connector 授權流程</td><td>唯一未驗，改為<strong>照最壞情況寫</strong>安裝嚮導</td></tr>
 </table>
 
-<p>最後兩項沒有實測（手上沒有啟用 Cowork 的帳號），但都已經用設計繞開，<strong>兩種答案都不會讓架構或安裝流程失敗</strong>。</p>
+<p>只剩 connector 授權沒實測，而它兩種答案都不會讓安裝流程失敗。</p>
 
 <h3>剩下的是業務決策，不是技術未知</h3>
 
