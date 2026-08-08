@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>非技術新手 Claude 環境包 — Spec</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 24px 96px;background:#16181d;color:#e6e6e6;
+ font:16px/1.75 -apple-system,system-ui,"PingFang TC","Noto Sans TC",sans-serif}
+main{max-width:900px;margin:0 auto}
+h1{font-size:28px;line-height:1.35;margin:0 0 4px;border-bottom:1px solid #2a2d34;padding-bottom:16px}
+.meta{color:#8b94a3;font-size:13px;margin:0 0 28px}
+h2{font-size:20px;margin:44px 0 12px;padding-top:8px;border-top:1px solid #22252c;color:#cfe0ff}
+h3{font-size:16px;margin:24px 0 8px;color:#b8c4d6}
+p,li{margin:8px 0}
+a{color:#7bb0ff}
+code{background:#22252c;padding:2px 5px;border-radius:4px;font:13px ui-monospace,Menlo,monospace}
+pre{background:#1c1f26;padding:12px;border-radius:8px;overflow:auto;font-size:13.5px;line-height:1.6}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;margin:1em 0;font-size:14.5px}
+th,td{border:1px solid #3a3d44;padding:6px 10px;text-align:left;vertical-align:top}
+th{background:#22252c}
+blockquote{border-left:3px solid #3a3d44;margin:12px 0;padding-left:12px;color:#b8bdc9}
+.mermaid{background:#fff;border-radius:8px;padding:10px;margin:1em 0;text-align:center}
+.toc{background:#1c1f26;border:1px solid #2a2d34;border-radius:8px;padding:16px 20px;margin:0 0 8px}
+.toc-title{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8b94a3;margin:0 0 8px}
+.toc ul{margin:0;padding-left:18px}
+.toc li{margin:4px 0}
+ol.criteria{counter-reset:c;list-style:none;padding:0;margin:12px 0}
+ol.criteria li{counter-increment:c;position:relative;padding:10px 14px 10px 44px;margin:8px 0;
+ background:#1c1f26;border-left:3px solid #4f8cff;border-radius:0 6px 6px 0}
+ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
+ color:#4f8cff;font-weight:600}
+</style>
+</head>
+<body><main>
+<h1>非技術新手 Claude 環境包 — Spec</h1>
+<p class="meta">2026-08-08 · 閱讀版，canonical 為 <code>2026-08-08-starter-kit-design.md</code></p>
+<nav class="toc"><p class="toc-title">目錄</p><ul>
+<li><a href="#what">這份 spec 在定義什麼</a></li>
+<li><a href="#who">對象與前提</a></li>
+<li><a href="#arch">架構</a></li>
+<li><a href="#kit">Kit 組成</a></li>
+<li><a href="#behavior">行為層</a></li>
+<li><a href="#safety">三道保命繩</a></li>
+<li><a href="#grill">想清楚再做</a></li>
+<li><a href="#memory">記憶</a></li>
+<li><a href="#deploy">部署與備份</a></li>
+<li><a href="#success"><strong>成功定義（成品層級）</strong></a></li>
+<li><a href="#verify"><strong>驗證方式</strong></a></li>
+<li><a href="#scope">範圍邊界（v1 不做）</a></li>
+<li><a href="#limits">已知限制</a></li>
+<li><a href="#adr">決策紀錄（供 plan 階段歸檔 ADR）</a></li>
+<li><a href="#sources">實測數據來源</a></li>
+</ul></nav>
+
+<h2 id="what">這份 spec 在定義什麼</h2>
+
+<p>一包給非技術者的 Claude 環境設定，讓他把一段話貼進自己的 Claude 之後，得到一個<strong>行為對、環境備妥、能開始做真服務</strong>的工作環境。</p>
+
+<p>v1 的交付物是「環境備妥 + 行為對」，不是任何一個具體的應用程式。排班系統之類的實際服務屬於後續版本。</p>
+
+<h2 id="who">對象與前提</h2>
+
+<p><strong>對象</strong>：朋友自己的公司／小團隊的非技術同事。沒有現成的 git 基礎設施，初期每人自己一個帳號。</p>
+
+<p><strong>前提條件</strong>（不滿足就不該往下裝）：</p>
+
+<table>
+<tr><th>項目</th><th>要求</th></tr>
+<tr><td>Claude 方案</td><td>Pro 以上（Cowork 需要付費方案）</td></tr>
+<tr><td>介面</td><td><strong>Cowork</strong>，不是 Chat 也不是 Code</td></tr>
+<tr><td>Windows 安裝</td><td>必須用 <code>.msix</code> 安裝檔、需要系統管理員權限、需要 Virtual Machine Platform（家用版也有）</td></tr>
+<tr><td>網路</td><td>程式碼執行環境至少要開「套件管理器 + <code>github.com</code>」</td></tr>
+<tr><td>組織政策</td><td>Cowork 與其網路存取都可能被組織關閉</td></tr>
+</table>
+
+<p><strong>安裝的第一步是跑官方 readiness check</strong> —— 一個不用安裝、不用登入的小程式，直接告訴這台機器能不能跑 Cowork。它把「家用版還是專業版」這類猜測完全繞開。</p>
+
+<h2 id="arch">架構</h2>
+
+<table>
+<tr><th>元件</th><th>負責</th><th>成本</th></tr>
+<tr><td>GitHub</td><td>程式碼、Actions（測試／備份）</td><td>$0（公開 repo，Actions 分鐘數無上限）</td></tr>
+<tr><td>Zeabur Free 方案</td><td>部署控制台</td><td>$0</td></tr>
+<tr><td>Tencent Cloud Tokyo 主機</td><td>跑容器（staging + prod 兩個環境）</td><td><strong>$4/月</strong></td></tr>
+<tr><td>Django + SQLite</td><td>後端、admin 後台、使用者系統</td><td>$0</td></tr>
+<tr><td>Google</td><td>Sheets 讀取</td><td>$0</td></tr>
+<tr><td><strong>合計</strong></td><td></td><td><strong>$4/月</strong></td></tr>
+</table>
+
+<p>三個環境跑同一份程式碼：local 是 Cowork 執行環境裡的 Python，staging 和 prod 是 Zeabur 上同一個 image 的兩個環境，各自獨立的 SQLite 檔案。</p>
+
+<h3>為什麼是 Django 而不是更輕的選項</h3>
+
+<p>判準是<strong>輕量、Claude 熟悉度、安全</strong>三項。Django 在後兩項明顯勝出，第一項可接受（150–250 MB，對 4 GB 的機器無關痛癢）。</p>
+
+<p>決定性的是安全：Django 的防護是預設開啟、要主動關掉才會出事（ORM 防 SQL injection、模板自動跳脫、內建 CSRF、PBKDF2 密碼雜湊），而且有專職 security team、公開的漏洞揭露流程、三年支援的 LTS。</p>
+
+<p>對照 FastAPI：使用者系統、admin 後台、ORM、CSRF、session、密碼雜湊全部要自己接，<strong>任何一塊漏掉就是洞</strong>，而且不會報錯、不會當機，網站看起來完全正常。在「Claude 代寫、使用者無法審查」的情境下這個差異被放大。</p>
+
+<p>Django 的 admin 後台另有一個不可取代的價值：<strong>它是非技術者唯一能自己點開看見資料的窗口</strong>，而且有完整繁體中文。</p>
+
+<h2 id="kit">Kit 組成</h2>
+
+<table>
+<tr><th>類型</th><th>名稱</th><th>做什麼</th></tr>
+<tr><td>—</td><td><strong>開場白</strong></td><td>要傳給對方的那段話。自帶最小行為指示，因為貼進去的當下 plugin 還沒裝</td></tr>
+<tr><td>hook</td><td>開場注入</td><td>每次對話開始載入行為層三支柱</td></tr>
+<tr><td>hook</td><td>自動 commit</td><td>每輪對話結束前跑測試，綠了才 commit</td></tr>
+<tr><td>hook</td><td>密鑰擋門</td><td>阻止 <code>.env</code> 之類被 commit</td></tr>
+<tr><td>skill</td><td>安裝嚮導</td><td>帶對方走完 readiness check、三家註冊授權、環境建立</td></tr>
+<tr><td>skill</td><td>環境健檢</td><td>跑一輪檢查吐綠燈報告</td></tr>
+<tr><td>skill</td><td><strong>想清楚再做</strong></td><td>grill-with-docs 改造版，維護 <code>CONTEXT.md</code> 與 ADR</td></tr>
+<tr><td>skill</td><td>部署</td><td>從改 code 到上線，含 staging 先看再上 prod</td></tr>
+<tr><td>樣板</td><td>Django 專案骨架</td><td>settings 分 dev/prod、Dockerfile、測試骨架、CI workflow、備份 workflow</td></tr>
+<tr><td>connector</td><td>GitHub、Google</td><td>遠端 MCP</td></tr>
+</table>
+
+<p>Excel 報表 skill 移至 v1.1 —— 它是能力展示，不是「環境備妥」的一部分。</p>
+
+<h2 id="behavior">行為層</h2>
+
+<p><strong>核心原則：不要問使用者他答不出來的問題。</strong></p>
+
+<h3>三支柱</h3>
+
+<p><strong>一、怎麼講話</strong> —— 繁中、白話、術語第一次出現時用括號補一句人話。</p>
+
+<p><strong>二、怎麼動手</strong> —— 放手模式。讀取、產生新檔、跑分析直接做；只有刪除和對外發布才停下來問。</p>
+
+<p><strong>三、怎麼決定</strong> —— 見下。</p>
+
+<h3>決策規則（三段）</h3>
+
+<ol class="criteria">
+<li><strong>技術決策底下有業務取捨 → 翻譯成業務問題來問。</strong> 不是「不能問」，是「不能用技術的樣子問」。</li>
+<li><strong>底下沒有業務取捨 → Claude 直接決定，寫 ADR。</strong> 密碼雜湊演算法、檔案命名、要不要加索引。</li>
+<li><strong>業務答案之間的交互後果 → Claude 自己推導並處理，不再回頭問。</strong></li>
+</ol>
+
+<p><strong>檢查點</strong>：如果一個技術決策翻譯不出業務問題，那是信號 —— 代表還沒想清楚這個決策會影響什麼，該回頭再想，而不是當作「沒有業務取捨」跳過。</p>
+
+<p><strong>翻譯是有損的</strong>：翻譯完要自問「使用者的答案是否足以支撐這個技術決策」，不夠要補問。</p>
+
+<h3>翻譯的實例（已驗證有效）</h3>
+
+<table>
+<tr><th>問使用者的樣子</th><th>底下的技術決策</th><th>實測答案</th></tr>
+<tr><td>員工離職後，他填過的班表要保留還是消失？</td><td>soft delete vs hard delete</td><td>全部保留 → soft delete</td></tr>
+<tr><td>最多多少人同時用？會開放給外部嗎？</td><td>SQLite vs Postgres</td><td>幾十人、只有內部 → SQLite 夠</td></tr>
+<tr><td>除了員工和主管，還有第三種人嗎？</td><td>要不要做權限系統</td><td>就兩種 → Django 內建 <code>is_staff</code> 就夠</td></tr>
+<tr><td>排好的班被改了，需要知道是誰改的嗎？</td><td>要不要做 audit log</td><td>需要且要能查 → 要做</td></tr>
+</table>
+
+<p><strong>這組實測證明了規則的必要性</strong>：三題往簡單走，一題往複雜走，而那個往複雜走的（audit log）<strong>正是 Claude 自己絕對會決定省掉的</strong> —— 「內部小工具、幾十人、不對外」，任何合理的技術判斷都會說不用做稽核。但使用者說要，因為他知道排班會有爭議。那是業務知識，不是技術判斷。</p>
+
+<p><strong>交互後果的實例</strong>：要能查「誰改的」+ 離職帳號保留 = audit log 會指向已離職的人，所以那些使用者記錄真的不能刪。這是從兩個業務答案推出的技術後果，Claude 要自己接住。</p>
+
+<h3>決定了要說，但不要求確認</h3>
+
+<blockquote>資料我存在一個叫 SQLite 的檔案裡 —— 就是一個檔案，簡單、備份容易，你們這個規模夠用。哪天人多到跑不動，我會告訴你要換。</blockquote>
+
+<p>使用者有知情權，但不用承擔他判斷不了的決策責任。</p>
+
+<h3>網路操作一律走 MCP，不走 shell</h3>
+
+<p>程式碼執行環境的網路受組織設定管控，而<strong>MCP 不受 egress 限制</strong>。在本機模式下 plugin 的 MCP server 是在使用者電腦上原生執行、不在 VM 裡，用的是主機網路。</p>
+
+<table>
+<tr><th>操作</th><th>走法</th></tr>
+<tr><td>GitHub</td><td>官方遠端 MCP</td></tr>
+<tr><td>Zeabur</td><td>官方本機 MCP</td></tr>
+<tr><td>Google Sheets</td><td>官方 connector</td></tr>
+<tr><td>查文件</td><td>web fetch／search（不受 egress 限制）</td></tr>
+</table>
+
+<p>這條要寫進行為層，否則 Claude 會很自然地用 <code>git push</code>，然後在網路關閉的環境下失敗。</p>
+
+<h3>寫死的預設（使用者不需要知道，但錯了會出事）</h3>
+
+<ul>
+<li>技術棧：Django + SQLite + Zeabur + GitHub</li>
+<li><code>DEBUG</code> 一律從環境變數讀，prod 絕不為 true</li>
+<li><code>SECRET_KEY</code> 從環境變數讀，不進 git</li>
+<li><strong>volume 必須在第一次啟動前掛好</strong></li>
+<li>備份必須用 SQLite 的一致性快照（<code>VACUUM INTO</code>），<strong>不能直接複製檔案</strong></li>
+<li>PocketBase／第三方元件一律鎖版本，不用 <code>latest</code></li>
+</ul>
+
+<h2 id="safety">三道保命繩</h2>
+
+<pre><code>Claude 改了程式碼
+  → 每輪對話結束前自動跑測試
+  → 綠了才 commit
+  → 紅了不 commit，直接修到綠</code></pre>
+
+<p>結果是 <strong>git 歷史上每一個 commit 都是測試綠的狀態</strong>。回溯到任何一點，拿到的都是能跑的版本。這讓「放手模式」真正安全 —— 不是「反正壞了可以回」，是「隨時可以回到一個確定能跑的版本」。</p>
+
+<p><strong>這三道全部不需要網路</strong> —— git 的本機操作（commit、log、diff、checkout）不連外。最關鍵的安全機制不受組織網路政策影響。</p>
+
+<p><strong>起點問題</strong>：樣板專案自帶一個最小的通過測試，所以從第一天就有綠的基準，不會出現「還沒有測試所以無法判斷」的空窗。</p>
+
+<h3>測試設計</h3>
+
+<p><strong>測行為，不測實作。</strong> 測「員工填了時段之後，主管在後台看得到」，不是 <code>save_shift()</code> 回傳 True —— 後者在重構時會壞掉，然後非技術者面對一個他看不懂的紅字。</p>
+
+<p><strong>測試報告是中文 HTML</strong>，列出系統保證會做的每件事。對非技術者，這張表同時是三件事：系統沒壞的證據、系統會做什麼的清單、跟同事解釋這東西能幹嘛的文件。</p>
+
+<p><strong>CI 跑的測試必須是 local 測試的超集</strong>，多出來的部分只能是「非得真實部署才驗得了」的東西。破了這條就會出現「我這邊都綠的，為什麼 CI 紅了」，而非技術者無法在本地重現問題。</p>
+
+<h2 id="grill">想清楚再做</h2>
+
+<p>基於 <a href="https://github.com/mattpocock/skills">mattpocock/skills</a> 的 <code>grill-with-docs</code>（MIT）。它比純 <code>grill-me</code> 多做兩件事：訪談中即時維護 <code>CONTEXT.md</code> 詞彙表，並在遇到難以回頭的決策時寫 ADR。</p>
+
+<p><strong>為什麼對非技術者比想像中重要</strong>：他的問題不只是想太淺，是<strong>講的話沒有固定意義</strong>。今天說「員工」、明天說「同事」、後天說「人員」，Claude 每次照字面理解，系統裡就同時出現三張表 —— 而他永遠不會發現，因為他看不懂程式碼。</p>
+
+<p><code>CONTEXT.md</code> 是<strong>他唯一看得懂、也唯一有資格審查的技術產物</strong>。</p>
+
+<h3>四項改造（原版是寫給工程師的）</h3>
+
+<ol class="criteria">
+<li><strong>技術問題翻譯成業務問題再問</strong>，不直接 grill 技術決策</li>
+<li><code>CONTEXT.md</code> 用繁中寫</li>
+<li>ADR 的「為什麼」用白話 —— 不是「to avoid N+1 queries」，是「這樣資料多的時候不會變慢」</li>
+<li>語氣改掉 —— 原版的 relentless 對工程師是優點，對非技術者是壓迫感</li>
+</ol>
+
+<h3>詞彙一致性貫穿全鏈</h3>
+
+<pre><code>使用者講的話 → CONTEXT.md 詞彙表 → 程式碼裡的名字 → 測試報告上的中文</code></pre>
+
+<p>四個地方同一套詞。而且這是<strong>可驗證的</strong> —— 檢查測試報告上出現的名詞是否都在 <code>CONTEXT.md</code> 有定義。</p>
+
+<h2 id="memory">記憶</h2>
+
+<p><strong>不需要另做知識庫，repo 就是記憶。</strong> <code>CONTEXT.md</code>、<code>docs/adr/</code>、folder instructions 都是檔案、都進 git，有版本、能回溯、跟程式碼綁在一起不會漂移。</p>
+
+<p><strong>但 Cowork 的內建記憶是黑盒子</strong>（看不到、不能編輯、沒有版本），所以：</p>
+
+<ol class="criteria">
+<li><strong>重要結論不能只留在記憶裡，必須寫進 repo 的檔案。</strong> 記憶是加速器，不是真相來源。</li>
+<li><strong>folder instructions 進 git。</strong> 它可以被 Claude 自己更新 —— 好用，但也代表 Claude 可能悄悄改掉規則。進 git 之後自動 commit hook 會記下來。</li>
+</ol>
+
+<p>另外要告知使用者：<strong>Chat 的記憶不會帶進 Cowork</strong>，兩邊是分開的。</p>
+
+<h2 id="deploy">部署與備份</h2>
+
+<p><strong>環境切分</strong>：staging 和 prod 是同一個 Zeabur 專案的兩個環境（不是兩個專案），變數與資源各自隔離，跑在同一台主機上。</p>
+
+<p><strong>觸發</strong>：push 到 <code>develop</code> → staging；merge 到 <code>main</code> → prod。</p>
+
+<p><strong>上 prod 要問</strong>：非技術者不會用 PR，所以 Claude 代為 merge，但「上正式版」屬於對外發布 → 停下來問。流程是 Claude 說「staging 看起來對嗎？要上正式版嗎」→ 同意才動。</p>
+
+<p><strong>migration 在容器啟動時執行</strong>（entrypoint 裡跑 <code>manage.py migrate</code>），不走 GitHub Actions —— Actions 連不到容器裡的 SQLite。</p>
+
+<p><strong>網址</strong>用預設 <code>xxx.zeabur.app</code>，子網域名稱自訂，自動 HTTPS。v1 不碰自訂網域：DNS 設定要在網域商後台做，A 記錄／CNAME／TTL 對非技術者是純黑話，而且這不是取捨、是操作步驟，「翻譯成業務問題」幫不上忙。</p>
+
+<p><strong>備份</strong>：GitHub Actions 排程 → 用 <code>VACUUM INTO</code> 產一致性快照 → 抓下來 → 推到<strong>私有 repo 的 Release</strong>，保留 <strong>3 個月</strong>。</p>
+
+<p>選 Release 而不是 commit 進 git，是因為 SQLite 是二進位檔，git 無法差異壓縮，每天一份就是每天多存一整份。選私有 repo 而不是 Actions artifact，是因為<strong>公開 repo 的 artifact 任何人都能下載</strong>，而裡面有使用者帳號與密碼雜湊。</p>
+
+<h2 id="success">成功定義（成品層級）</h2>
+
+<h3>環境備妥</h3>
+
+<ol class="criteria">
+<li>環境健檢報告 8 項全綠。</li>
+<li>工作資料夾裡有 Django 專案，<code>pytest</code> 全綠且<strong>執行時間 &lt; 30 秒</strong>。</li>
+<li>GitHub 上有對應 repo，Actions 至少成功執行過一次（結論為 success）。</li>
+<li>Zeabur 上 staging 與 prod 各有一個網址，<strong>兩者 HTTP 狀態碼皆為 200</strong>。</li>
+<li>在 prod 寫入一筆測試資料 → 觸發重新部署 → <strong>該筆資料仍存在</strong>。</li>
+<li>prod 的 <code>DEBUG</code> 為 <code>False</code>、<code>SECRET_KEY</code> 不等於樣板預設值、<code>ALLOWED_HOSTS</code> 不含 <code>*</code>。</li>
+<li>備份 workflow 成功執行過一次，私有 repo 的 Release 中存在一個 SQLite 檔，<strong>該檔可被 <code>sqlite3</code> 開啟，且包含第 5 條寫入的那筆測試資料</strong>。</li>
+<li>git 歷史上<strong>任意</strong>一個 commit checkout 出來，<code>pytest</code> 皆為綠。</li>
+</ol>
+
+<h3>行為層</h3>
+
+<ol class="criteria" style="counter-reset:c 8">
+<li>對「我想做個排班系統」這類模糊需求，Claude <strong>提出的問題中落在禁問清單上的數量 = 0</strong>，且<strong>提出的業務規則問題數量 ≥ 1</strong>。（禁問清單於 plan 階段定義為具體項目，至少涵蓋：資料庫選型、框架選型、部署平台、檔案結構、演算法選擇。）</li>
+<li>測試報告 HTML 中出現的領域名詞，<strong>能在 <code>CONTEXT.md</code> 找到定義的比例 = 100%</strong>。</li>
+<li>清空 Cowork 的 project memory 後開啟全新 session，Claude 讀 repo 即可接續工作，<strong>重新詢問已記錄於 <code>CONTEXT.md</code> 或 <code>docs/adr/</code> 之決策的次數 = 0</strong>。</li>
+</ol>
+
+<h3>走得通</h3>
+
+<ol class="criteria" style="counter-reset:c 11">
+<li>在乾淨機器與乾淨帳號上依文件從零走完安裝流程，<strong>走查記錄中「動用文件外知識」的次數 = 0</strong>。</li>
+</ol>
+
+<h2 id="verify">驗證方式</h2>
+
+<p>第 1–8 條由<strong>環境健檢 skill 本身執行</strong> —— 它跑完吐一張綠燈報告，報告即為驗證結果。第 5 與第 7 條需要實際觸發一次重新部署與一次備份 workflow。</p>
+
+<p>第 9 條以預先寫好的數組模糊需求作為輸入，比對 Claude 提出的問題與禁問清單。</p>
+
+<p>第 10 條以腳本比對測試報告 HTML 中的名詞與 <code>CONTEXT.md</code> 的詞條。</p>
+
+<p>第 11 條清空 project memory 後開新 session，觀察 Claude 是否重問已記錄的決策。</p>
+
+<p>第 12 條為人工走查，規則是：<strong>只照文件做；每一次發現自己動用文件外的知識，就記下一筆缺陷，不當場修，繼續走完</strong>。每一步計時。走完後修掉全部缺陷，重跑，直到記錄為零。這條把「走查者知道太多」從缺點轉為偵測器 —— 每動用一次文件外知識，就精準定位到一個文件缺口。</p>
+
+<p>全部條件可在單一 session 內完成，無需等待真實時間流逝。</p>
+
+<p>Code-level tests are authored in the plan phase (codex as QA), not in this spec.</p>
+
+<h2 id="scope">範圍邊界（v1 不做）</h2>
+
+<ul>
+<li>Excel 報表 skill（移至 v1.1）</li>
+<li>自訂網域綁定</li>
+<li>排班系統或任何具體應用程式（v2）</li>
+<li>行銷／業務／營運情境 skills（v3）</li>
+<li>Google Sheets 逐格編輯（官方 connector 做不到）</li>
+<li>多人集中管理（Zeabur Team 方案 $79/月起，初期每人自己一個帳號）</li>
+</ul>
+
+<h2 id="limits">已知限制</h2>
+
+<ol class="criteria">
+<li><strong>貼一段 prompt 無法全自動安裝。</strong> 裝 plugin、裝 connector、改設定都是 UI 動作，Anthropic 刻意鎖在使用者手動同意後面。能做的是 Claude 一步步帶他點完。</li>
+<li><strong>Cowork 執行環境沒有 docker。</strong> 已實測確認。架構因此不依賴它。</li>
+<li><strong>程式碼執行環境的網路預設可能全封。</strong> 需要至少開「套件管理器 + <code>github.com</code>」。若組織政策不允許，這套做不了 —— 應在安裝前誠實告知，而非讓對方裝到一半才發現。</li>
+<li><strong>Windows 有兩個靜默失敗的陷阱</strong>：沒有管理員權限、或用 <code>.exe</code> 而非 <code>.msix</code> 安裝，都會得到一個看起來正常但沒有 Cowork 的 Claude Desktop，且沒有任何訊息說明原因。</li>
+<li><strong>Zeabur log 只留 48 小時</strong>（Dev $5 方案可延至 7 天）。若使用者週五出問題、週一才回報，log 已消失。這是明擺著的取捨，未替使用者決定。</li>
+<li><strong>SQLite 不能水平擴展，並發寫入有限。</strong> 內部工具綽綽有餘，但這是有天花板的選擇。</li>
+<li><strong>沒掛 volume 之前寫入的資料活不過下一次部署。</strong> 已實測確認，且原因不是「掛載會清空目錄」——對照組根本沒有掛載動作，資料就已經消失。</li>
+<li><strong>Zeabur 的錯誤訊息品質差。</strong> 實測撞到三個都是非技術者會卡死的類型，最嚴重的是 ZeaburOS 未安裝時建專案只回 <code>An error occurred, please try again later</code>，既沒說原因也沒說下一步。安裝嚮導必須把順序寫死，而非等使用者撞到錯誤。</li>
+<li><strong>Zeabur 自訂網域不驗證所有權。</strong> 打錯字不會當場報錯，要等發現網址連不上才知道。</li>
+<li><strong>Cowork connector 是否自動觸發 OAuth 未經實測。</strong> 安裝嚮導照「不能自動」撰寫，若實際可自動，多餘步驟為無害空轉。</li>
+<li><strong>公開 repo 換來無限 CI，代價是任何密鑰外洩即為公開。</strong> hook 擋 <code>.env</code> 是防呆不是保險。</li>
+</ol>
+
+<h2 id="adr">決策紀錄（供 plan 階段歸檔 ADR）</h2>
+
+<h3>ADR-1: Cowork over Claude Code</h3>
+
+<p><strong>Decision:</strong> Target Claude Cowork, not the Code surface.</p>
+
+<p><strong>Drivers:</strong> The audience includes Windows users. Claude Code's Bash sandbox has no native Windows support; when the sandbox cannot start, Claude Code falls back to running commands unsandboxed, which is worse than no sandbox for a user who approves everything without reading it. Restoring the sandbox requires WSL2, which contains three steps Claude cannot perform (elevating PowerShell, rebooting, setting a Linux password) plus a permanent usability defect: the project must live inside WSL's filesystem for acceptable performance, where the user cannot find it in Explorer.</p>
+
+<p><strong>Rejected:</strong> Claude Code. It has the better network model — per-domain approval on first use, requiring no admin rights — against Cowork's org-level all-or-nothing setting. Reconsider if the audience ever becomes Mac-only.</p>
+
+<h3>ADR-2: SQLite over a managed database</h3>
+
+<p><strong>Decision:</strong> SQLite as the datastore for v1.</p>
+
+<p><strong>Drivers:</strong> Collapses an entire layer out of the architecture. Backup becomes file copy, which a free scheduled GitHub Action can perform, removing the need for the paid backup feature. Tests run against in-memory SQLite with zero external dependencies, so the suite completes in seconds and works fully offline — which in turn makes the whole test-before-commit safety net independent of network policy.</p>
+
+<p><strong>Rejected:</strong> Supabase (unnecessary once SQLite was chosen; free tier also caps at 2 projects across all orgs, pauses after 7 days of inactivity, and its own docs warn against pointing its MCP at production data). Neon (wins decisively on multi-environment cost — free branching, 100 projects, no pausing — but requires hand-building an admin page to view user data, which this audience cannot do).</p>
+
+<p><strong>Accepted ceiling:</strong> no horizontal scaling, limited concurrent writes.</p>
+
+<h3>ADR-3: Django over FastAPI, PocketBase, and Rails</h3>
+
+<p><strong>Decision:</strong> Django with server-rendered templates. No API layer in v1.</p>
+
+<p><strong>Drivers:</strong> Security defaults are on unless deliberately disabled, and the project has a dedicated security team, a public disclosure process, and three-year LTS releases. The admin console is the only surface through which a non-technical owner can inspect their own data, and it ships with complete Traditional Chinese translations. Claude's familiarity with Django is high enough that fabricated configuration is unlikely — which matters because the user cannot detect it.</p>
+
+<p><strong>Rejected:</strong> FastAPI — auth, admin, ORM, CSRF, sessions and password hashing all become the author's responsibility, and any omission is a silent hole rather than a crash. PocketBase — lightest option and bundles SQLite, auth and an admin UI in one binary, but is pre-1.0 with no backward-compatibility guarantee, primarily single-maintainer, has no dedicated security team, and its admin UI is English-only. Rails 8 — heaviest of the three and its admin console requires a third-party gem.</p>
+
+<p><strong>Deferred:</strong> Django Ninja. Not needed while pages are server-rendered; adding it later costs one dependency and a few files, and breaks nothing existing.</p>
+
+<h3>ADR-4: Route network operations through MCP rather than the shell</h3>
+
+<p><strong>Decision:</strong> Every network-dependent operation goes through an MCP server. The shell is used only for local work.</p>
+
+<p><strong>Drivers:</strong> Code execution egress is governed by an org-level setting that a corporate user may have no permission to change; the measured default on an Enterprise account blocked every outbound request including google.com. MCP is explicitly exempt from egress rules, and in local mode plugin MCP servers execute natively on the device rather than inside the VM, so they use the host's network. The design therefore survives a fully locked-down environment.</p>
+
+<p><strong>Residual gap:</strong> <code>pip install</code> cannot be routed through MCP, since MCP is a tool protocol rather than a package manager. This sets the hard minimum: package-manager egress must be enabled or the kit cannot function. <code>github.com</code> is also requested, to avoid the alternative of writing files through the GitHub API, which would produce a second commit history diverging from the local one.</p>
+
+<h3>ADR-5: Backups to a private repo's Releases, not Actions artifacts</h3>
+
+<p><strong>Decision:</strong> Scheduled Action takes a <code>VACUUM INTO</code> snapshot and uploads it to a private repository's Releases, retained 3 months.</p>
+
+<p><strong>Drivers:</strong> Artifacts inherit repository visibility, and the code repo is public to obtain unlimited Actions minutes — so artifacts would expose user accounts and password hashes to anyone. Releases avoid inflating git history, which a daily binary blob would otherwise do since git cannot delta-compress it.</p>
+
+<p><strong>Critical detail:</strong> a plain file copy of a live SQLite database can capture an inconsistent snapshot, producing a backup that appears valid and is not. This is worse than no backup, because the failure is only discovered during a restore. <code>VACUUM INTO</code> must be used.</p>
+
+<h3>ADR-6: Translate technical decisions into business questions rather than hiding them</h3>
+
+<p><strong>Decision:</strong> A technical decision that conceals a business trade-off is surfaced as a business question. One with no business trade-off is decided unilaterally and recorded as an ADR. Consequences arising from the interaction of several business answers are derived by Claude without returning to the user.</p>
+
+<p><strong>Drivers:</strong> Validated empirically. Of four translated questions, three led to simpler implementations and one — audit logging — led to a more complex one. That fourth is precisely the decision an unaided technical judgement would have skipped: an internal tool for a few dozen users has no obvious need for an audit trail. The user asked for it because scheduling produces disputes and disputes need evidence. That is domain knowledge, not a technical judgement.</p>
+
+<p><strong>Rejected:</strong> the earlier formulation "never ask the user technical questions", which would have caused exactly that omission.</p>
+
+<p><strong>Detection rule:</strong> if a technical decision cannot be translated into a business question, that indicates the decision's consequences are not yet understood — not that no trade-off exists.</p>
+
+<h2 id="sources">實測數據來源</h2>
+
+<p>本 spec 引用的所有數值均來自 2026-08-04 至 2026-08-05 的實機驗證，完整過程記錄於 <code>docs/research/2026-08-03-starter-kit-infra-selection.html</code>，探針程式與模板位於 <code>probes/volume-check/</code>。</p>
+
+<table>
+<tr><th>數值</th><th>來源</th></tr>
+<tr><td>主機 2 vCPU / 3659 MB / 60 GB，$4/月</td><td><code>zeabur server get --id &lt;server-id&gt; --json</code> 於 Tencent Tokyo <code>bundle_starter_nmc_lin_med4_01</code></td></tr>
+<tr><td>ZeaburOS + K3s + 2 容器佔用 1503 MB</td><td><code>zeabur server exec -- free -m</code></td></tr>
+<tr><td>volume 對照實驗（無 volume 資料消失／有 volume 資料留存）</td><td><code>probes/volume-check/zeabur-no-volume.yaml</code> 與 <code>zeabur-with-volume.yaml</code>，以 <code>zeabur service exec</code> 寫入 marker 後 <code>service restart</code> 再讀取</td></tr>
+<tr><td>自訂網域可在 Free 方案綁定、HTTP 200、ZeroSSL 憑證</td><td><code>zeabur domain create --domain &lt;name&gt;</code> 後 <code>curl -I</code> 與 <code>openssl s_client</code></td></tr>
+<tr><td>Cowork 本機 VM：Ubuntu 22.04 aarch64、4 核 / 3904 MB、無 docker、對外全部 000</td><td>於 Cowork 本機模式執行 shell 診斷腳本</td></tr>
+</table>
+
+<h3>官方文件依據</h3>
+
+<ul>
+<li><a href="https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork">Get started with Claude Cowork</a></li>
+<li><a href="https://support.claude.com/en/articles/14479288-claude-cowork-architecture-overview">Claude Cowork architecture overview</a></li>
+<li><a href="https://support.claude.com/en/articles/13364135-use-claude-cowork-safely">Use Claude Cowork safely</a></li>
+<li><a href="https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows">Deploy Claude Desktop for Windows</a></li>
+<li><a href="https://claude.com/docs/cowork/guide/plugins">Install plugins (Cowork)</a></li>
+<li><a href="https://support.claude.com/en/articles/10166901-use-google-workspace-connectors">Use Google Workspace connectors</a></li>
+<li><a href="https://code.claude.com/docs/en/sandboxing">Configure the sandboxed Bash tool (Claude Code)</a></li>
+<li><a href="https://zeabur.com/pricing">Zeabur Pricing</a></li>
+<li><a href="https://zeabur.com/docs/en-US/data-management/volumes">Zeabur Volumes</a></li>
+<li><a href="https://zeabur.com/docs/en-US/template/template-format">Zeabur Template Format</a></li>
+<li><a href="https://docs.github.com/billing/managing-billing-for-github-actions/about-billing-for-github-actions">GitHub Actions billing</a></li>
+<li><a href="https://github.com/mattpocock/skills">mattpocock/skills</a></li>
+</ul>
+
+</main>
+<script src="/static/mermaid.min.js"></script>
+<script>try{mermaid.initialize({startOnLoad:false,theme:"default"});mermaid.run();}catch(e){console.error(e);}</script>
+</body></html>
