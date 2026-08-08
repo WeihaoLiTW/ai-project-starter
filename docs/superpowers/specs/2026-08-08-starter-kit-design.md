@@ -21,8 +21,10 @@ v1 的交付物是「環境備妥 + 行為對」，不是任何一個具體的�
 |---|---|
 | Claude 方案 | Pro 以上（Cowork 需要付費方案） |
 | 介面 | **Cowork**，不是 Chat 也不是 Code |
+| **執行模式** | **必須是本機模式** —— 關掉「Run new tasks in the cloud」。雲端模式有未修的檔案讀取錯誤，見已知限制 |
+| 網路 | Settings → Capabilities 開啟「Allow network egress」。**預設的「套件管理器」檔位就夠** |
 | Windows 安裝 | 必須用 `.msix` 安裝檔、需要系統管理員權限、需要 Virtual Machine Platform（家用版也有） |
-| 網路 | 程式碼執行環境至少要開「套件管理器 + `github.com`」 |
+| Windows 工作資料夾 | **必須在 `C:\Users\<使用者>\` 底下**。不可用網路磁碟或 UNC 路徑，不可用被重導向的 Known Folder |
 | 組織政策 | Cowork 與其網路存取都可能被組織關閉 |
 
 **安裝的第一步是跑官方 readiness check** —— 一個不用安裝、不用登入的小程式，
@@ -127,19 +129,31 @@ Excel 報表 skill 移至 v1.1 —— 它是能力展示，不是「環境備妥
 
 使用者有知情權，但不用承擔他判斷不了的決策責任。
 
-### 網路操作一律走 MCP，不走 shell
+### 網路：哪些走 shell、哪些必須走 MCP
 
-程式碼執行環境的網路受組織設定管控，而**MCP 不受 egress 限制**。在本機模式下
-plugin 的 MCP server 是在使用者電腦上原生執行、不在 VM 裡，用的是主機網路。
+程式碼執行環境的出站流量走強制代理，只有白名單上的目的地可達。個人 Pro 帳號的
+設定在 **Settings → Capabilities**，開啟「Allow network egress」後的**預設檔位是
+「套件管理器」**，官方明列的網域包含 npm（`registry.npmjs.org` 等）、Python
+（`pypi.org`、`files.pythonhosted.org`）、**`github.com`**、crates.io、yarnpkg。
 
-| 操作 | 走法 |
-|---|---|
-| GitHub | 官方遠端 MCP |
-| Zeabur | 官方本機 MCP |
-| Google Sheets | 官方 connector |
-| 查文件 | web fetch／search（不受 egress 限制） |
+**所以 `pip install` 與 `git push` 在預設設定下可靠運作，不需要使用者改任何東西。**
 
-這條要寫進行為層，否則 Claude 會很自然地用 `git push`，然後在網路關閉的環境下失敗。
+| 操作 | 走法 | 理由 |
+|---|---|---|
+| `pip install`、`npx`、`git push` | **shell** | 預設檔位已涵蓋 |
+| `django-admin`、`pytest`、`manage.py` | **shell** | 純本機，不需網路 |
+| GitHub 的 issue／PR／Actions 查詢 | MCP 或 shell 皆可 | 兩條路都通 |
+| **Zeabur** | **必須 MCP** | **`zeabur.com` 不在套件管理器清單裡，而自訂網域清單是壞的** |
+| Google Sheets | 官方 connector | 沒有 shell 替代路徑 |
+| 查文件 | web fetch／search | 不受 egress 限制 |
+
+**Zeabur 必須走 MCP 的理由不是「網路可能被關」，是「加網域這個機制本身失效」。**
+自訂網域清單的失效已有五個月的公開回報，跨方案、跨平台、在全新 VM 上複現，且
+「All domains」檔位同樣失效（見已知限制）。MCP 明確不受 egress 規則管轄，且本機
+模式下 plugin 的 MCP server 在使用者電腦上原生執行、不在 VM 裡，用的是主機網路。
+
+這條要寫進行為層，否則 Claude 會很自然地用 `npx zeabur` 或 `curl` 打 Zeabur API，
+然後失敗，而失敗訊息不會告訴任何人原因是網域白名單。
 
 ### 寫死的預設（使用者不需要知道，但錯了會出事）
 
@@ -313,23 +327,45 @@ Code-level tests are authored in the plan phase (codex as QA), not in this spec.
 1. **貼一段 prompt 無法全自動安裝。** 裝 plugin、裝 connector、改設定都是 UI 動作，
    Anthropic 刻意鎖在使用者手動同意後面。能做的是 Claude 一步步帶他點完。
 2. **Cowork 執行環境沒有 docker。** 已實測確認。架構因此不依賴它。
-3. **程式碼執行環境的網路預設可能全封。** 需要至少開「套件管理器 + `github.com`」。
-   若組織政策不允許，這套做不了 —— 應在安裝前誠實告知，而非讓對方裝到一半才發現。
-4. **Windows 有兩個靜默失敗的陷阱**：沒有管理員權限、或用 `.exe` 而非 `.msix`
+3. **雲端模式會讀到舊的檔案內容，而且 metadata 說謊。**
+   [#79464](https://github.com/anthropics/claude-code/issues/79464) 開啟中
+   （2026-07-20 起，有獨立複現）：一個檔案被 stage 過之後再次讀取會回傳舊 bytes，
+   但工具回報的是當前的檔案大小與修改時間。**因為 metadata 是對的，從沙箱內部做任何
+   staleness 檢查都會被騙過去。** 對本 kit 而言這會讓「測試綠才 commit」驗到錯的
+   內容。本機模式的對應問題已於 Claude Desktop v1.22209.0 修復
+   （[#38993](https://github.com/anthropics/claude-code/issues/38993)），雲端模式未修。
+   **因此 kit 要求本機模式。**
+4. **自訂網域白名單失效。**
+   [#30112](https://github.com/anthropics/claude-code/issues/30112) 開啟中
+   （2026-03-02 起，54 則討論，最近更新 2026-08-04）：加入白名單的網域仍被 403
+   擋下，Team 方案管理員親自設定亦然，macOS 與 Windows 皆複現，於開機不到一分鐘的
+   全新 VM 上複現（排除傳播延遲），且切換到「All domains」同樣失效。**套件管理器
+   的網域正常。** 這是 Zeabur 必須走 MCP 的直接原因 —— 不是偏好，是那條路不通。
+5. **組織政策可完全關閉網路。** 實測 Enterprise 帳號預設全封，連 `google.com` 都不通。
+   若對方環境如此且無權調整，這套做不了 —— 應在安裝前誠實告知，而非讓對方裝到一半
+   才發現。
+6. **Windows 有兩個靜默失敗的安裝陷阱**：沒有管理員權限、或用 `.exe` 而非 `.msix`
    安裝，都會得到一個看起來正常但沒有 Cowork 的 Claude Desktop，且沒有任何訊息說明
    原因。
-5. **Zeabur log 只留 48 小時**（Dev $5 方案可延至 7 天）。若使用者週五出問題、週一
+7. **Windows 的資料夾掛載有硬性約束。** 工作資料夾必須在 `C:\Users\<使用者>\` 底下：
+   非系統磁碟已於
+   [#24964](https://github.com/anthropics/claude-code/issues/24964) 修復，但被重導向
+   的 Known Folder 仍會出現 `EXDEV: cross-device link not permitted`；UNC 與網路磁碟
+   仍不支援（[#45297](https://github.com/anthropics/claude-code/issues/45297) 開啟中，
+   2026-08-04 仍在更新）。防毒軟體干擾 VirtioFS 掛載是已知的故障來源。樣板必須帶
+   `.gitattributes` 強制 LF —— 沙箱是 Linux、主機是 Windows。
+8. **Zeabur log 只留 48 小時**（Dev $5 方案可延至 7 天）。若使用者週五出問題、週一
    才回報，log 已消失。這是明擺著的取捨，未替使用者決定。
-6. **SQLite 不能水平擴展，並發寫入有限。** 內部工具綽綽有餘，但這是有天花板的選擇。
-7. **沒掛 volume 之前寫入的資料活不過下一次部署。** 已實測確認，且原因不是「掛載
+9. **SQLite 不能水平擴展，並發寫入有限。** 內部工具綽綽有餘，但這是有天花板的選擇。
+10. **沒掛 volume 之前寫入的資料活不過下一次部署。** 已實測確認，且原因不是「掛載
    會清空目錄」——對照組根本沒有掛載動作，資料就已經消失。
-8. **Zeabur 的錯誤訊息品質差。** 實測撞到三個都是非技術者會卡死的類型，最嚴重的是
+11. **Zeabur 的錯誤訊息品質差。** 實測撞到三個都是非技術者會卡死的類型，最嚴重的是
    ZeaburOS 未安裝時建專案只回 `An error occurred, please try again later`，既沒說
    原因也沒說下一步。安裝嚮導必須把順序寫死，而非等使用者撞到錯誤。
-9. **Zeabur 自訂網域不驗證所有權。** 打錯字不會當場報錯，要等發現網址連不上才知道。
-10. **Cowork connector 是否自動觸發 OAuth 未經實測。** 安裝嚮導照「不能自動」撰寫，
+12. **Zeabur 自訂網域不驗證所有權。** 打錯字不會當場報錯，要等發現網址連不上才知道。
+13. **Cowork connector 是否自動觸發 OAuth 未經實測。** 安裝嚮導照「不能自動」撰寫，
     若實際可自動，多餘步驟為無害空轉。
-11. **公開 repo 換來無限 CI，代價是任何密鑰外洩即為公開。** hook 擋 `.env` 是防呆
+14. **公開 repo 換來無限 CI，代價是任何密鑰外洩即為公開。** hook 擋 `.env` 是防呆
     不是保險。
 
 ## 決策紀錄（供 plan 階段歸檔 ADR）
@@ -389,23 +425,30 @@ Rails 8 — heaviest of the three and its admin console requires a third-party g
 **Deferred:** Django Ninja. Not needed while pages are server-rendered; adding it
 later costs one dependency and a few files, and breaks nothing existing.
 
-### ADR-4: Route network operations through MCP rather than the shell
+### ADR-4: Zeabur through MCP; everything else through the shell
 
-**Decision:** Every network-dependent operation goes through an MCP server. The shell
-is used only for local work.
+**Decision:** Zeabur is driven exclusively through its MCP server. Package installs,
+git, and all local tooling run in the shell.
 
-**Drivers:** Code execution egress is governed by an org-level setting that a
-corporate user may have no permission to change; the measured default on an
-Enterprise account blocked every outbound request including google.com. MCP is
-explicitly exempt from egress rules, and in local mode plugin MCP servers execute
-natively on the device rather than inside the VM, so they use the host's network.
-The design therefore survives a fully locked-down environment.
+**Drivers:** The default egress tier on a personal plan already permits the package
+managers plus `github.com`, so `pip install` and `git push` work with no
+configuration. `zeabur.com` is not on that list, and the mechanism for adding it is
+broken: custom allowlist entries are still rejected with 403 five months after the
+first report, reproduced by a Team-plan admin configuring it directly, on both macOS
+and Windows, on a VM under a minute old, and the "All domains" tier fails the same
+way while package-manager domains keep working. MCP is explicitly exempt from egress
+rules, and in local mode plugin MCP servers execute natively on the device rather
+than inside the VM, so they use the host's network.
 
-**Residual gap:** `pip install` cannot be routed through MCP, since MCP is a tool
-protocol rather than a package manager. This sets the hard minimum: package-manager
-egress must be enabled or the kit cannot function. `github.com` is also requested, to
-avoid the alternative of writing files through the GitHub API, which would produce a
-second commit history diverging from the local one.
+**Rejected:** an earlier formulation routing *all* network operations through MCP.
+It was not achievable — `pip install`, `django-admin` and `pytest` have no MCP
+equivalent — and it was unnecessary, since the default tier already covers them. The
+correct statement is narrower and better justified: Zeabur must use MCP not because
+egress might be disabled, but because the only alternative path is a broken feature.
+
+**Consequence for the behaviour layer:** Claude must be told explicitly not to reach
+Zeabur through `npx zeabur` or `curl`. Those fail in a way that never mentions the
+allowlist, so the cause is not discoverable from the error.
 
 ### ADR-5: Backups to a private repo's Releases, not Actions artifacts
 
@@ -456,6 +499,16 @@ that no trade-off exists.
 | volume 對照實驗（無 volume 資料消失／有 volume 資料留存） | `probes/volume-check/zeabur-no-volume.yaml` 與 `zeabur-with-volume.yaml`，以 `zeabur service exec` 寫入 marker 後 `service restart` 再讀取 |
 | 自訂網域可在 Free 方案綁定、HTTP 200、ZeroSSL 憑證 | `zeabur domain create --domain <name>` 後 `curl -I` 與 `openssl s_client` |
 | Cowork 本機 VM：Ubuntu 22.04 aarch64、4 核 / 3904 MB、無 docker、對外全部 000 | 於 Cowork 本機模式執行 shell 診斷腳本 |
+
+### 平台缺陷依據（Anthropic 官方 repo，狀態查核於 2026-08-08）
+
+| Issue | 狀態 | 對本 spec 的影響 |
+|---|---|---|
+| [#79464](https://github.com/anthropics/claude-code/issues/79464) 雲端 session 重複讀取回傳舊 bytes、metadata 卻是新的 | **OPEN**（2026-07-20 起，有獨立複現） | 要求本機模式 |
+| [#38993](https://github.com/anthropics/claude-code/issues/38993) virtiofs 掛載回傳截斷／過期檔案 | OPEN，但**本機模式已於 v1.22209.0 修復**並經使用者確認 | 本機模式可用 |
+| [#30112](https://github.com/anthropics/claude-code/issues/30112) 自訂網域白名單失效，403 blocked-by-allowlist | **OPEN**（2026-03-02 起，54 則討論，2026-08-04 仍在更新） | Zeabur 必須走 MCP |
+| [#24964](https://github.com/anthropics/claude-code/issues/24964) 資料夾選擇器拒絕家目錄以外的路徑 | CLOSED / COMPLETED（2026-04-07） | 非系統磁碟已可用，但重導向的 Known Folder 仍有回報 |
+| [#45297](https://github.com/anthropics/claude-code/issues/45297) Windows 不支援 UNC 與網路磁碟 | **OPEN**（2026-08-04 仍在更新） | 工作資料夾不可用網路磁碟 |
 
 ### 官方文件依據
 
