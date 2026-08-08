@@ -76,7 +76,8 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 <tr><td>網路</td><td>Settings → Capabilities 開啟「Allow network egress」。<strong>預設的「套件管理器」檔位就夠</strong></td></tr>
 <tr><td>Windows 安裝</td><td>必須用 <code>.msix</code> 安裝檔、需要系統管理員權限、需要 Virtual Machine Platform（家用版也有）</td></tr>
 <tr><td>Windows 工作資料夾</td><td><strong>必須在 <code>C:\Users\&lt;使用者&gt;\</code> 底下</strong>。不可用網路磁碟或 UNC 路徑，不可用被重導向的 Known Folder</td></tr>
-<tr><td>組織政策</td><td>Cowork 與其網路存取都可能被組織關閉</td></tr>
+<tr><td>Chrome 擴充功能</td><td>建議安裝並在 Cowork 開啟 —— 它是 Zeabur 操作的保底路徑，不受網路白名單管轄</td></tr>
+<tr><td>組織政策</td><td>Cowork、其網路存取、Claude in Chrome 都可能被組織個別關閉</td></tr>
 </table>
 
 <p><strong>安裝的第一步是跑官方 readiness check</strong> —— 一個不用安裝、不用登入的小程式，直接告訴這台機器能不能跑 Cowork。它把「家用版還是專業版」這類猜測完全繞開。</p>
@@ -167,25 +168,38 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 
 <p>使用者有知情權，但不用承擔他判斷不了的決策責任。</p>
 
-<h3>網路：哪些走 shell、哪些必須走 MCP</h3>
+<h3>網路：本機的走 shell，Zeabur 走安裝時探測到的那條</h3>
 
 <p>程式碼執行環境的出站流量走強制代理，只有白名單上的目的地可達。個人 Pro 帳號的設定在 <strong>Settings → Capabilities</strong>，開啟「Allow network egress」後的<strong>預設檔位是「套件管理器」</strong>，官方明列的網域包含 npm（<code>registry.npmjs.org</code> 等）、Python（<code>pypi.org</code>、<code>files.pythonhosted.org</code>）、<strong><code>github.com</code></strong>、crates.io、yarnpkg。</p>
 
 <p><strong>所以 <code>pip install</code> 與 <code>git push</code> 在預設設定下可靠運作，不需要使用者改任何東西。</strong></p>
 
 <table>
-<tr><th>操作</th><th>走法</th><th>理由</th></tr>
-<tr><td><code>pip install</code>、<code>npx</code>、<code>git push</code></td><td><strong>shell</strong></td><td>預設檔位已涵蓋</td></tr>
-<tr><td><code>django-admin</code>、<code>pytest</code>、<code>manage.py</code></td><td><strong>shell</strong></td><td>純本機，不需網路</td></tr>
-<tr><td>GitHub 的 issue／PR／Actions 查詢</td><td>MCP 或 shell 皆可</td><td>兩條路都通</td></tr>
-<tr><td><strong>Zeabur</strong></td><td><strong>必須 MCP</strong></td><td><strong><code>zeabur.com</code> 不在套件管理器清單裡，而自訂網域清單是壞的</strong></td></tr>
-<tr><td>Google Sheets</td><td>官方 connector</td><td>沒有 shell 替代路徑</td></tr>
-<tr><td>查文件</td><td>web fetch／search</td><td>不受 egress 限制</td></tr>
+<tr><th>操作</th><th>走法</th></tr>
+<tr><td><code>pip install</code>、<code>npx</code>、<code>git push</code></td><td>shell（預設檔位已涵蓋）</td></tr>
+<tr><td><code>django-admin</code>、<code>pytest</code>、<code>manage.py</code></td><td>shell（純本機）</td></tr>
+<tr><td>GitHub 的 issue／PR／Actions</td><td>MCP 或 shell 皆可</td></tr>
+<tr><td>Google Sheets</td><td>官方 connector</td></tr>
+<tr><td>查文件</td><td>web fetch／search（不受 egress 限制）</td></tr>
+<tr><td><strong>Zeabur</strong></td><td><strong>見下 —— 安裝時探測</strong></td></tr>
 </table>
 
-<p><strong>Zeabur 必須走 MCP 的理由不是「網路可能被關」，是「加網域這個機制本身失效」。</strong> 自訂網域清單的失效已有五個月的公開回報，跨方案、跨平台、在全新 VM 上複現，且「All domains」檔位同樣失效（見已知限制）。MCP 明確不受 egress 規則管轄，且本機模式下 plugin 的 MCP server 在使用者電腦上原生執行、不在 VM 裡，用的是主機網路。</p>
+<h4>Zeabur 的三層路徑</h4>
 
-<p>這條要寫進行為層，否則 Claude 會很自然地用 <code>npx zeabur</code> 或 <code>curl</code> 打 Zeabur API，然後失敗，而失敗訊息不會告訴任何人原因是網域白名單。</p>
+<p><code>zeabur.com</code> 不在套件管理器清單裡，而把它加進自訂網域清單的機制是壞的（見已知限制）。但單走 MCP 在功能上也不成立 —— <strong>MCP 的 26 個工具裡沒有租主機、沒有 <code>service restart</code>、沒有刪除</strong>，而租主機是安裝的第一步、重新部署是日常操作。</p>
+
+<p>因此不在設計時選路，<strong>由環境健檢在安裝時探測</strong>，任一層可用即可運作：</p>
+
+<table>
+<tr><th>層</th><th>探測方式</th><th>涵蓋</th><th>受 egress 限制</th></tr>
+<tr><td><strong>CLI</strong></td><td>shell 能否連 <code>zeabur.com</code></td><td>全部操作，最快</td><td>受</td></tr>
+<tr><td><strong>MCP</strong></td><td>MCP server 能否連上</td><td>部署、log、環境變數、網域</td><td><strong>不受</strong></td></tr>
+<tr><td><strong>瀏覽器</strong></td><td>Chrome 擴充功能是否可用</td><td>MCP 缺的：租主機、重新部署、裝 ZeaburOS、刪除</td><td><strong>不受</strong></td></tr>
+</table>
+
+<p><strong>至少有一層一定在</strong> —— Claude in Chrome 明確不受 egress 規則管轄（官方原文將它與 web fetch、MCP 並列為例外），所以它是保底路徑。本機模式下 plugin 的 MCP server 也是在使用者電腦上原生執行、不在 VM 裡，用的是主機網路。</p>
+
+<p><strong>行為層要寫死的是：不要假設任何一條路可用。</strong> 否則 Claude 會很自然地用 <code>npx zeabur</code> 或 <code>curl</code> 打 Zeabur API，失敗訊息不會提到網域白名單，沒有人查得出原因。</p>
 
 <h3>寫死的預設（使用者不需要知道，但錯了會出事）</h3>
 
@@ -276,7 +290,7 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 <h3>環境備妥</h3>
 
 <ol class="criteria">
-<li>環境健檢報告 8 項全綠。</li>
+<li>環境健檢報告 9 項全綠。</li>
 <li>工作資料夾裡有 Django 專案，<code>pytest</code> 全綠且<strong>執行時間 &lt; 30 秒</strong>。</li>
 <li>GitHub 上有對應 repo，Actions 至少成功執行過一次（結論為 success）。</li>
 <li>Zeabur 上 staging 與 prod 各有一個網址，<strong>兩者 HTTP 狀態碼皆為 200</strong>。</li>
@@ -298,6 +312,7 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 
 <ol class="criteria" style="counter-reset:c 11">
 <li>在乾淨機器與乾淨帳號上依文件從零走完安裝流程，<strong>走查記錄中「動用文件外知識」的次數 = 0</strong>。</li>
+<li>環境健檢報告<strong>明確指出 Zeabur 操作走的是哪一條路徑</strong>（CLI／MCP／瀏覽器），且以該路徑實際執行一次操作成功。<strong>三層皆不可用時健檢必須紅燈並說明原因</strong>，不得靜默略過。</li>
 </ol>
 
 <h2 id="verify">驗證方式</h2>
@@ -333,7 +348,7 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 <li><strong>貼一段 prompt 無法全自動安裝。</strong> 裝 plugin、裝 connector、改設定都是 UI 動作，Anthropic 刻意鎖在使用者手動同意後面。能做的是 Claude 一步步帶他點完。</li>
 <li><strong>Cowork 執行環境沒有 docker。</strong> 已實測確認。架構因此不依賴它。</li>
 <li><strong>雲端模式會讀到舊的檔案內容，而且 metadata 說謊。</strong> <a href="https://github.com/anthropics/claude-code/issues/79464">#79464</a> 開啟中（2026-07-20 起，有獨立複現）：一個檔案被 stage 過之後再次讀取會回傳舊 bytes，但工具回報的是當前的檔案大小與修改時間。<strong>因為 metadata 是對的，從沙箱內部做任何 staleness 檢查都會被騙過去。</strong> 對本 kit 而言這會讓「測試綠才 commit」驗到錯的內容。本機模式的對應問題已於 Claude Desktop v1.22209.0 修復（<a href="https://github.com/anthropics/claude-code/issues/38993">#38993</a>），雲端模式未修。<strong>因此 kit 要求本機模式。</strong></li>
-<li><strong>自訂網域白名單失效。</strong> <a href="https://github.com/anthropics/claude-code/issues/30112">#30112</a> 開啟中（2026-03-02 起，54 則討論，最近更新 2026-08-04）：加入白名單的網域仍被 403 擋下，Team 方案管理員親自設定亦然，macOS 與 Windows 皆複現，於開機不到一分鐘的全新 VM 上複現（排除傳播延遲），且切換到「All domains」同樣失效。<strong>套件管理器的網域正常。</strong> 這是 Zeabur 必須走 MCP 的直接原因 —— 不是偏好，是那條路不通。</li>
+<li><strong>自訂網域白名單失效。</strong> <a href="https://github.com/anthropics/claude-code/issues/30112">#30112</a> 開啟中（2026-03-02 起，54 則討論，最近更新 2026-08-04）：加入白名單的網域仍被 403 擋下，Team 方案管理員親自設定亦然，macOS 與 Windows 皆複現，於開機不到一分鐘的全新 VM 上複現（排除傳播延遲），且切換到「All domains」同樣失效。<strong>套件管理器的網域正常。</strong> 在受管制的企業帳號上使用者無權調整該設定，因此連驗證都做不到 —— 這正是不能把任何單一路徑當作前提的理由。</li>
 <li><strong>組織政策可完全關閉網路。</strong> 實測 Enterprise 帳號預設全封，連 <code>google.com</code> 都不通。若對方環境如此且無權調整，這套做不了 —— 應在安裝前誠實告知，而非讓對方裝到一半才發現。</li>
 <li><strong>Windows 有兩個靜默失敗的安裝陷阱</strong>：沒有管理員權限、或用 <code>.exe</code> 而非 <code>.msix</code> 安裝，都會得到一個看起來正常但沒有 Cowork 的 Claude Desktop，且沒有任何訊息說明原因。</li>
 <li><strong>Windows 的資料夾掛載有硬性約束。</strong> 工作資料夾必須在 <code>C:\Users\&lt;使用者&gt;\</code> 底下：非系統磁碟已於 <a href="https://github.com/anthropics/claude-code/issues/24964">#24964</a> 修復，但被重導向的 Known Folder 仍會出現 <code>EXDEV: cross-device link not permitted</code>；UNC 與網路磁碟仍不支援（<a href="https://github.com/anthropics/claude-code/issues/45297">#45297</a> 開啟中，2026-08-04 仍在更新）。防毒軟體干擾 VirtioFS 掛載是已知的故障來源。樣板必須帶 <code>.gitattributes</code> 強制 LF —— 沙箱是 Linux、主機是 Windows。</li>
@@ -376,15 +391,23 @@ ol.criteria li::before{content:counter(c);position:absolute;left:14px;top:10px;
 
 <p><strong>Deferred:</strong> Django Ninja. Not needed while pages are server-rendered; adding it later costs one dependency and a few files, and breaks nothing existing.</p>
 
-<h3>ADR-4: Zeabur through MCP; everything else through the shell</h3>
+<h3>ADR-4: Detect the Zeabur path at install time instead of choosing one</h3>
 
-<p><strong>Decision:</strong> Zeabur is driven exclusively through its MCP server. Package installs, git, and all local tooling run in the shell.</p>
+<p><strong>Decision:</strong> Local work runs in the shell. Zeabur is reached through whichever of three paths the health check finds available: the CLI, the MCP server, or the Chrome extension. The kit commits to none of them in advance.</p>
 
-<p><strong>Drivers:</strong> The default egress tier on a personal plan already permits the package managers plus <code>github.com</code>, so <code>pip install</code> and <code>git push</code> work with no configuration. <code>zeabur.com</code> is not on that list, and the mechanism for adding it is broken: custom allowlist entries are still rejected with 403 five months after the first report, reproduced by a Team-plan admin configuring it directly, on both macOS and Windows, on a VM under a minute old, and the "All domains" tier fails the same way while package-manager domains keep working. MCP is explicitly exempt from egress rules, and in local mode plugin MCP servers execute natively on the device rather than inside the VM, so they use the host's network.</p>
+<p><strong>Drivers:</strong> No single path is dependable across the environments this kit will land in.</p>
 
-<p><strong>Rejected:</strong> an earlier formulation routing <em>all</em> network operations through MCP. It was not achievable — <code>pip install</code>, <code>django-admin</code> and <code>pytest</code> have no MCP equivalent — and it was unnecessary, since the default tier already covers them. The correct statement is narrower and better justified: Zeabur must use MCP not because egress might be disabled, but because the only alternative path is a broken feature.</p>
+<p>The CLI is the best path when it works, but <code>zeabur.com</code> is absent from the default egress allowlist and the mechanism for adding it is broken — custom entries still rejected with 403 five months after the first report, reproduced by a Team-plan admin configuring it directly, on macOS and Windows, on a VM under a minute old, with the "All domains" tier failing identically while package-manager domains keep working. On a managed account the setting cannot even be changed, so the user cannot test whether it would have worked.</p>
 
-<p><strong>Consequence for the behaviour layer:</strong> Claude must be told explicitly not to reach Zeabur through <code>npx zeabur</code> or <code>curl</code>. Those fail in a way that never mentions the allowlist, so the cause is not discoverable from the error.</p>
+<p>MCP is exempt from egress rules, but its 26 tools do not cover renting a server, restarting or redeploying a service, or deleting anything — and renting is step one of installation while redeploy is a daily operation.</p>
+
+<p>Claude in Chrome is also exempt from egress rules — the documentation lists it alongside web fetch and MCP as an exception — and can drive the web console for exactly the operations MCP lacks. This was demonstrated during research: the ZeaburOS reinstall, which neither CLI nor MCP can perform, was completed through the browser.</p>
+
+<p><strong>Rejected:</strong> committing to MCP alone, which fails on capability, and committing to the CLI alone, which fails on reachability. Each was proposed and each was wrong for a different reason.</p>
+
+<p><strong>Consequence:</strong> the health check must report which path is active and prove it with one real operation. Claude must never assume a path is available — a blocked <code>npx zeabur</code> or <code>curl</code> fails with an error that never mentions the allowlist, leaving the cause undiscoverable.</p>
+
+<p><strong>Accepted cost:</strong> the browser path has no sandbox between Claude and the screen, and in practice a non-technical user will grant "always allow on this site". The scope is one domain, but the grant is real. It is also brittle against console redesigns, which is tolerable for one-off installation steps and poor for daily operations.</p>
 
 <h3>ADR-5: Backups to a private repo's Releases, not Actions artifacts</h3>
 
