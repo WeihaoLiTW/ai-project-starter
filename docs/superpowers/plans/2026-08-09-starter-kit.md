@@ -142,54 +142,25 @@ plugins/starter-kit/
     commit_if_green.py                # 綠才 commit
   behavior/
     pillars.md                        # 三支柱文字，session_start.py 讀它
-    forbidden-questions.md            # 禁問清單，機器可讀
-  checks/
-    __init__.py
-    model.py                          # CheckResult 與 Probe 型別
-    runner.py                         # 跑九項、隔離例外、組報告
-    render.py                         # 產 HTML 與 JSON
-    collect.py                        # 讀 facts、跑一輪、寫報告
-    _shim.py                          # 借用 hook 的 run/repo_root，一份實作兩邊用
-    question_audit.py                 # 比對問題與禁問清單
-    probes/
-      __init__.py
-      environment.py                  # 1 執行環境
-      toolchain.py                    # 2 工具鏈
-      suite.py                        # 3 測試綠且 < 30 秒
-      safety_net.py                   # 4 保命繩通電
-      history.py                      # 5 git 歷史抽驗
-      github.py                       # 6 GitHub repo 與 Actions
-      zeabur.py                       # 7 Zeabur 三層路徑
-      service.py                      # 8 兩環境存活與 prod 設定
-      data.py                         # 9 資料持久性與備份可還原
-  skills/
-    install-wizard/
-      SKILL.md
-      template/                       # 複製到使用者工作資料夾的 Django 樣板
-      backup-repo/                    # 放進私有備份庫的東西
-        backup.yml
-        README.md
-    health-check/SKILL.md
-    think-first/
-      SKILL.md
-      CONTEXT-FORMAT.md
-      ADR-FORMAT.md
-    deploy/SKILL.md
+    forbidden-questions.md            # 禁問清單
 
-docs/onboarding/
-  kickoff-prompt.md                   # 要傳給對方的那段話
-  walkthrough.md                      # 從零到完成的走查文件
+這些問題不能用技術的樣子問使用者。不是不能問，是要換成他答得出來的問法。
 
-tests/                                # kit 自己的測試
-  conftest.py
-  test_safety_net.py
-  test_template_project.py
-  test_prod_settings.py
-  test_backup.py
-  test_report_glossary.py
-  test_health_check.py
-  test_ci_superset.py
-  test_question_audit.py
+「判定樣式」欄放的是關鍵字清單，用頓號 `、` 隔開，不是正規表示式——這樣
+這張表在任何 markdown 檢視器裡都能正常顯示成表格，編輯的人也不需要懂正規
+表示式的跳脫規則。真正拿去比對用的正規表示式，是 `load_rules()` 在讀進
+這張表之後才組出來的。
+
+| 類別 | 判定樣式 | 為什麼不能這樣問 | 該問什麼 |
+|---|---|---|---|
+| 資料庫選型 | `SQLite、Postgres、PostgreSQL、MySQL、MongoDB、用哪個資料庫、資料庫要用` | 他沒有判斷依據，答什麼都是猜 | 最多多少人同時用？會開放給公司外的人嗎？ |
+| 框架選型 | `Django、FastAPI、Flask、Rails、React、Vue、用哪個框架、前端要用` | 同上，而且選錯的代價他看不見 | 直接決定，寫進 ADR，告訴他結論就好 |
+| 部署平台 | `Zeabur、Vercel、Heroku、AWS、GCP、部署到哪、要用哪個平台` | 這是成本與維運的取捨，不是他的取捨 | 這東西要給公司外的人用嗎？壞掉多久之內要修好？ |
+| 檔案結構 | `目錄結構、檔案要放哪、資料夾怎麼分、要不要拆成多個檔案、要不要拆成多個模組、monorepo` | 他看不懂目錄，也不會因此改變任何決定 | 直接決定 |
+| 演算法選擇 | `演算法、貪婪演算法、動態規劃、要用什麼演算法、排序方式要用` | 他要的是結果對不對，不是怎麼算 | 排出來的班要先滿足誰的偏好？有沒有一定不能違反的規則？ |
+| 認證機制 | `OAuth、JWT、SAML、session 還是 token、認證要用` | 純技術實作 | 除了員工和主管，還有第三種人嗎？ |
+| 快取與效能 | `Redis、memcache、要不要加快取、要不要加索引` | 過早最佳化，而且他無從判斷 | 直接決定；真的變慢再告訴他 |
+| 測試框架 | `pytest、unittest、jest、測試框架要用` | 純技術實作 | 直接決定 |
 ```
 
 樣板內部：
@@ -2738,11 +2709,31 @@ Expected: FAIL，`ModuleNotFoundError: No module named 'checks.question_audit'`�
 `plugins/starter-kit/checks/question_audit.py`：
 
 ```python
-"""Compare a batch of questions against the forbidden list.
+r"""Compare a batch of questions against the forbidden list.
 
 The list is deliberately narrow. A rule that flags an ordinary business
 question is worse than no rule, because it trains everyone to ignore the
 output.
+
+forbidden-questions.md is a markdown table meant to be read by humans, so its
+"判定樣式" column holds a plain keyword list separated by the ideographic
+comma `、` rather than a regex. A markdown table cell cannot contain a literal
+`|` without escaping it to `\|`, but `\|` inside a regex means "a literal pipe
+character", not "or" -- so a pipe-joined alternation cannot live inside a
+table cell without silently breaking. Keeping the column as a keyword list
+sidesteps the clash entirely: load_rules() below does the escaping and joins
+the keywords into a real alternation for re.search.
+
+Word-boundary anchoring: `\b` only fires at a transition between a "word"
+character (letter, digit, underscore) and a non-word character. Chinese text
+has no spaces between words, so two adjacent Chinese characters both count as
+"word" characters and `\b` never fires between them -- anchoring a Chinese
+keyword would silently stop it from matching at all, not tighten it. Anchors
+are therefore added only to keywords that contain no CJK character (pure
+Latin/ASCII terms such as `React` or `SQLite`), where `\b` correctly stops
+the keyword from matching inside a longer word (`React` no longer matches
+inside `reaction`). Any keyword that is pure Chinese, or mixes Chinese with
+Latin (e.g. "session 還是 token"), is left unanchored.
 """
 
 import re
@@ -2751,6 +2742,8 @@ from pathlib import Path
 
 RULES_FILE = Path(__file__).resolve().parent.parent / "behavior" / "forbidden-questions.md"
 ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|$", re.M)
+KEYWORD_SEP = "、"
+CJK_CHAR = re.compile(r"[一-鿿]")
 
 
 @dataclass(frozen=True)
@@ -2761,13 +2754,32 @@ class Rule:
     ask_instead: str
 
 
+def _anchored_pattern(keyword):
+    """Escape one keyword and add `\\b` anchors only where they help.
+
+    See the module docstring for why anchoring is skipped for any keyword
+    that contains a CJK character.
+    """
+    escaped = re.escape(keyword)
+    if CJK_CHAR.search(keyword):
+        return escaped
+    return rf"\b{escaped}\b"
+
+
 def load_rules(path=RULES_FILE):
-    """Read the forbidden list from its markdown table."""
+    """Read the forbidden list from its markdown table.
+
+    Each row's keyword list is escaped keyword-by-keyword and joined with a
+    real `|`, so the resulting `Rule.pattern` is ready to hand straight to
+    `re.search` -- the table itself never has to contain a raw regex.
+    """
     text = Path(path).read_text("utf-8")
-    return [
-        Rule(category=c, pattern=p, why=w, ask_instead=a)
-        for c, p, w, a in ROW.findall(text)
-    ]
+    rules = []
+    for category, keywords_cell, why, ask_instead in ROW.findall(text):
+        keywords = [k.strip() for k in keywords_cell.split(KEYWORD_SEP) if k.strip()]
+        pattern = "|".join(_anchored_pattern(k) for k in keywords)
+        rules.append(Rule(category=category, pattern=pattern, why=why, ask_instead=ask_instead))
+    return rules
 
 
 def forbidden_hits(text, rules):
