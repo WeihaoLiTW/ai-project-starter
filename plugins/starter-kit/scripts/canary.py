@@ -14,7 +14,10 @@ payload = read_payload()
 event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 line = f"{datetime.datetime.now().isoformat()} {event} keys={sorted(payload)}\n"
 
-with (Path.cwd() / "hook-canary.log").open("a", encoding="utf-8") as handle:
-    handle.write(line)
+try:
+    with (Path.cwd() / "hook-canary.log").open("a", encoding="utf-8") as handle:
+        handle.write(line)
+except Exception as exc:
+    sys.stderr.write(f"Failed to write hook-canary.log: {exc}\n")
 
 emit({})
