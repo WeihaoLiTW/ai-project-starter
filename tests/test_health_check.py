@@ -1,6 +1,8 @@
 import sys
 import types
 
+from conftest import git
+
 from checks.model import CheckResult
 from checks.runner import run_all
 
@@ -72,3 +74,54 @@ def test_default_probes_contains_an_execution_time_failure_end_to_end(monkeypatc
     assert len(results) == 9
     assert results[0].ok is False
     assert "執行時炸了" in results[0].detail
+
+
+def test_history_probe_reports_green_when_every_commit_passes(repo):
+    """歷史抽驗：git 歷史上每一個 commit checkout 出來測試都是綠的，探針回報綠燈。"""
+    from checks.probes.history import probe
+
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"另一個永遠是綠的。\"\"\"\n    assert True\n",
+        encoding="utf-8",
+    )
+    git("add", "-A", cwd=repo)
+    git("commit", "-q", "-m", "add another green test", cwd=repo)
+
+    result = probe({"repo": repo, "sample": 10})
+
+    assert result.ok is True
+
+
+def test_history_probe_names_the_commit_that_fails(repo):
+    """歷史抽驗：有一個 commit 的測試是紅的，探針要在 detail 裡指名是哪個 commit。"""
+    from checks.probes.history import probe
+
+    (repo / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"這個 commit 的測試被改成紅的。\"\"\"\n    assert False\n",
+        encoding="utf-8",
+    )
+    git("add", "-A", cwd=repo)
+    git("commit", "-q", "-m", "break the suite", cwd=repo)
+    bad_commit = git("rev-parse", "HEAD", cwd=repo).strip()
+
+    result = probe({"repo": repo, "sample": 10})
+
+    assert result.ok is False
+    assert bad_commit[:7] in result.detail
+
+
+def test_checking_history_leaves_the_working_folder_exactly_as_it_was(repo):
+    """歷史抽驗絕對不能動到使用者的工作區：跑完之後 branch、HEAD、工作區狀態
+    要一個字不變。這條線的價值全部在這裡——用 worktree 而不是 checkout，
+    就是為了讓這個測試通過。"""
+    from checks.probes.history import probe
+
+    before_branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip()
+    before_head = git("rev-parse", "HEAD", cwd=repo).strip()
+    before_status = git("status", "--porcelain", cwd=repo)
+
+    probe({"repo": repo, "sample": 10})
+
+    assert git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip() == before_branch
+    assert git("rev-parse", "HEAD", cwd=repo).strip() == before_head
+    assert git("status", "--porcelain", cwd=repo) == before_status
