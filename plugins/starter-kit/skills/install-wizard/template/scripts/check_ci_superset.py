@@ -1,8 +1,15 @@
 """Keep CI and local on one test path.
 
 Parsing YAML would need a dependency, and these scripts are standard library
-only. The workflow is ours, so matching on lines is enough and honest about
-what it can see.
+only. The workflow is ours, so matching on lines is enough — but it is only
+line matching, not a YAML parser. Comment lines (first non-whitespace
+character is '#') are excluded from both checks below, so a script name or
+the word "pytest" mentioned only in a comment does not count as evidence of
+anything. Anything else on a line is treated as executable: a step's `name:`
+field that happens to contain the word "pytest" is indistinguishable from a
+real `run:` command and will still be flagged. This module can tell an
+executable line from a comment; it cannot tell a `run:` command from
+arbitrary prose.
 """
 
 import re
@@ -10,18 +17,30 @@ import sys
 from pathlib import Path
 
 ENTRYPOINT = "scripts/run_tests.sh"
-TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$", re.MULTILINE)
+TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$")
+
+
+def _is_comment_line(line):
+    """A line whose first non-whitespace character is '#'."""
+    return line.lstrip().startswith("#")
 
 
 def uses_shared_entrypoint(workflow):
-    """True when the workflow runs the same script local runs."""
-    return ENTRYPOINT in workflow
+    """True when a non-comment line runs the same script local runs."""
+    for line in workflow.splitlines():
+        if _is_comment_line(line):
+            continue
+        if ENTRYPOINT in line:
+            return True
+    return False
 
 
 def stray_test_commands(workflow):
     """Test invocations that bypass the shared entrypoint."""
     stray = []
     for line in workflow.splitlines():
+        if _is_comment_line(line):
+            continue
         if ENTRYPOINT in line:
             continue
         match = TEST_COMMAND.match(line)
