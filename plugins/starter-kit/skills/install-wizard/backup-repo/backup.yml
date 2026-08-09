@@ -1,0 +1,76 @@
+name: backup
+
+# This workflow lives in the PRIVATE backup repository, not in the public
+# code repository. That way the default GITHUB_TOKEN is enough and no
+# credential that reaches this repo is ever stored in a public one.
+on:
+  schedule:
+    - cron: "17 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the backup script from the code repository
+        run: |
+          curl -sSfL -o backup_snapshot.py \
+            "https://raw.githubusercontent.com/${{ vars.CODE_REPO }}/main/scripts/backup_snapshot.py"
+
+      - name: Install the Zeabur CLI
+        run: npm install -g zeabur@0.21.0
+
+      # The database sits on a volume inside the container, so the snapshot is
+      # taken in there and carried out through stdout. The image is
+      # python:3.10-slim, which has no sqlite3 command — hence python -c.
+      - name: Take a consistent snapshot inside the container
+        env:
+          ZEABUR_API_TOKEN: ${{ secrets.ZEABUR_API_TOKEN }}
+        run: |
+          zeabur service exec \
+            --service-id "${{ vars.ZEABUR_SERVICE_ID }}" \
+            --env-id "${{ vars.ZEABUR_ENV_ID }}" \
+            -- python -c '
+          import base64, os, sqlite3, sys, tempfile
+          src = os.path.join(os.environ.get("DATA_DIR", "/data"), "db.sqlite3")
+          out = os.path.join(tempfile.mkdtemp(), "snap.sqlite3")
+          conn = sqlite3.connect(src)
+          conn.execute("VACUUM INTO ?", (out,))
+          conn.close()
+          with open(out, "rb") as handle:
+              sys.stdout.write(base64.b64encode(handle.read()).decode())
+          os.remove(out)
+          ' > snapshot.b64
+          python3 -c "
+          import base64, pathlib
+          data = pathlib.Path('snapshot.b64').read_text().strip()
+          pathlib.Path('snapshot.sqlite3').write_bytes(base64.b64decode(data))
+          "
+
+      # Transport does not report its own failures, so the file is checked
+      # after it arrives, not only where it was made.
+      - name: Refuse to keep a snapshot that does not open
+        run: python3 backup_snapshot.py verify snapshot.sqlite3
+
+      - name: Publish it as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="backup-$(date -u +%Y-%m-%d)"
+          mv snapshot.sqlite3 "${TAG}.sqlite3"
+          gh release create "$TAG" "${TAG}.sqlite3" \
+            --repo "${{ github.repository }}" \
+            --title "$TAG" --notes "Automatic snapshot."
+
+      - name: Drop snapshots older than three months
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "${{ github.repository }}" --limit 500 \
+            --json tagName,createdAt > releases.json
+          python3 backup_snapshot.py expired releases.json | while read -r tag; do
+            gh release delete "$tag" --repo "${{ github.repository }}" --cleanup-tag --yes
+          done
