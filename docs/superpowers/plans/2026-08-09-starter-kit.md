@@ -1533,10 +1533,47 @@ def test_a_saved_note_can_be_read_back_again():
     assert Note.objects.get().body == "第一筆"
 
 
+@pytest.mark.django_db
 def test_the_health_page_answers(client):
     """打開健康檢查網址，回 200。"""
     assert client.get("/health/").status_code == 200
 ```
+
+兩個測試都要 `@pytest.mark.django_db`。健康檢查那頁會去數資料庫裡有幾筆紀錄，
+少了這個標記 pytest-django 會直接擋下資料庫存取 —— 而樣板的第一次執行如果是紅的，
+「從第一天就有綠的基準」這個前提就不成立了。
+
+`template/manage.py`：Django 的標準樣板，只有一處要注意 ——
+
+```python
+#!/usr/bin/env python
+"""Django's command-line utility for administrative tasks."""
+import os
+import sys
+
+
+def main():
+    """Run administrative tasks."""
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "project.settings.dev")
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError as exc:
+        raise ImportError(
+            "Couldn't import Django. Are you sure it's installed and "
+            "available on your PYTHONPATH environment variable? Did you "
+            "forget to activate a virtual environment?"
+        ) from exc
+    execute_from_command_line(sys.argv)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+`manage.py` 預設 dev、`wsgi.py` 預設 prod，這個不對稱是 Django 的慣例：手動下指令
+通常是在自己機器上，跑起來的服務則是在正式環境。**代價是容器裡跑 `manage.py migrate`
+必須確保 `DJANGO_SETTINGS_MODULE` 已經是 prod**，否則會靜默地用開發設定去動正式資料庫。
+Task 4 的 Dockerfile 用 `ENV` 設死它，就是為了這件事。
 
 - [ ] **Step 6: 寫 git 屬性與忽略清單**
 
