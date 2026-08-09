@@ -59,9 +59,9 @@ Cowork 官方文件在 hooks schema、marketplace schema、plugin.json 欄位三
 | 13 健檢指名 Zeabur 路徑並實測一次 | B10 健檢說得出走哪條路 | `test_health_check.py` | 5 | 判定邏輯自動；實際操作需人工 |
 | （保命繩，非編號條件） | B4 密鑰擋在 commit 之外 | `test_safety_net.py` | 3 | 自動 |
 | （測試設計，非編號條件） | B9 CI 跑的是 local 的超集 | `test_ci_superset.py` | 3 | 自動 |
-| （Global Constraint，非編號條件） | B17 hook 不會中斷使用者的操作 | `test_hook_payload.py` | 7 | 自動 |
+| （Global Constraint，非編號條件） | B17 hook 不會中斷使用者的操作 | `test_hook_payload.py` | 8 | 自動 |
 
-合計 49 個測試函式；其中密鑰那個是參數化的，實際跑出 54 個案例。
+合計 50 個測試函式；其中密鑰那個是參數化的，實際跑出 55 個案例。
 
 **Gate A 覆蓋**：13 條成功條件，每條都對到至少一個行為分段；11 條有自動測試，另 2 條（#3、#11）純人工，已列在人工清單。
 **Gate B 溯源**：每組測試底下都附一行「期望值來源」，指出數字或字串取自 spec 哪一段、或哪一份實測紀錄。
@@ -1039,7 +1039,7 @@ def read_payload():
 
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         sys.stderr.write(f"Failed to parse hook payload: {exc}\n")
         return {}
 
@@ -1209,9 +1209,14 @@ addopts = -q
 | 不是 UTF-8 的位元組 | `{}`、退出碼 0 |
 | `42` | `{}`、退出碼 0 |
 | `[1,2]` | `{}`、退出碼 0 |
+| 巢狀四千層的 `[` | `{}`、退出碼 0 |
 | 上面每一種餵給 canary | 退出碼 0 |
 
 先寫測試、看它紅、再讓它綠。
+
+最後一項容易被漏掉：`json.loads` 遇到太深的巢狀會丟 `RecursionError`，那**不是**
+`JSONDecodeError` 的子類別，所以只接 `JSONDecodeError` 接不到。接 `(ValueError,
+RecursionError)` 才蓋得完 —— `JSONDecodeError` 本身是 `ValueError` 的子類別。
 
 - [ ] **Step 6: 確認測試跑得起來**
 
@@ -3846,7 +3851,7 @@ git commit -m "feat: add the deploy flow that stops before going public"
 - [ ] **Step 4: 跑一次完整測試**
 
 Run: `python3 -m pytest tests/ -v`
-Expected: PASS，49 個測試函式、54 個案例全綠。
+Expected: PASS，50 個測試函式、55 個案例全綠。
 
 - [ ] **Step 5: Commit**
 
