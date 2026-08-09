@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -16,10 +17,15 @@ def test_fresh_project_suite_is_green_within_30_seconds(tmp_path):
         check=True,
     )
 
+    # Force run_tests.sh to use the same interpreter the dependencies were
+    # just installed into, instead of whatever "python3" happens to be
+    # first on PATH (which may be an unrelated, dependency-less install).
+    env = dict(os.environ, PYTHON=sys.executable)
+
     started = time.monotonic()
     proc = subprocess.run(
         ["sh", "scripts/run_tests.sh"], cwd=project,
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     elapsed = time.monotonic() - started
 
