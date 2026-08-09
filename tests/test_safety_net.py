@@ -1,5 +1,7 @@
 """B2：測試紅的時候不會產生 commit。B4：密鑰擋門。"""
 
+import os
+
 import pytest
 
 from conftest import git, run_hook
@@ -210,13 +212,124 @@ def test_second_consecutive_failure_does_not_block_again(repo):
 
 
 def test_an_untracked_env_file_never_gets_committed(repo):
-    """工作區裡有沒被追蹤的 .env，自動 commit 不會把它納進去。"""
+    """工作區裡有沒被追蹤的 .env，自動 commit 不會把它納進去，
+    而且使用者要看得到、看得懂為什麼——不能只是安靜地漏掉它。"""
     (repo / ".env").write_text("SECRET_KEY=real-one\n", encoding="utf-8")
     (repo / "tests" / "test_more.py").write_text(
         "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
     )
 
-    run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
 
     tracked = git("ls-files", cwd=repo).splitlines()
     assert ".env" not in tracked
+    assert ".env" in out.get("systemMessage", "")
+
+
+def test_when_every_staged_path_is_a_secret_nothing_is_committed_and_user_is_told(repo):
+    """這一輪唯一有變動的檔案就是一個密鑰檔時，排除完就沒有東西可以
+    commit。這跟「這一輪什麼都沒改」是不同的靜默——使用者要知道
+    有東西本來要存但被擋下來了，而不是誤以為這一輪什麼都沒發生。"""
+    before = int(git("rev-list", "--count", "HEAD", cwd=repo).strip())
+    (repo / ".env").write_text("SECRET_KEY=real-one\n", encoding="utf-8")
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    after = int(git("rev-list", "--count", "HEAD", cwd=repo).strip())
+    assert after == before
+    assert ".env" in out.get("systemMessage", "")
+
+
+def test_missing_test_runner_names_the_path_on_stderr(repo):
+    """`scripts/run_tests.sh` 不存在時（裝壞了的安裝），不能安靜地什麼都
+    不做——stderr 要點名它找的是哪個路徑，裝機的人才查得出來。"""
+    (repo / "scripts" / "run_tests.sh").unlink()
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    _, out, stderr = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert out == {}
+    assert str(repo / "scripts" / "run_tests.sh") in stderr
+
+
+@pytest.fixture
+def repo_no_identity(tmp_path, monkeypatch):
+    """一個跟 `repo` 一樣的 git repo，但刻意讓 user.name / user.email
+    在任何地方都沒有設定——模擬一個從沒跑過 git 指令的使用者。
+
+    `GIT_CONFIG_GLOBAL` 指向一個空檔案，隔絕跑測試這台機器上真正使用者
+    的全域 git 設定；`user.useConfigOnly` 關掉 git 從作業系統帳號
+    （gecos/使用者全名）自動推斷身份的後備行為——沒有這一步，在一台
+    已經替真人使用者設定好全名的 macOS/Linux 開發機上，git 仍然會成功
+    推斷出一個身份，這個測試想模擬的失敗就不會發生。
+    """
+    empty_config = tmp_path / "empty.gitconfig"
+    empty_config.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty_config))
+
+    root = tmp_path / "work"
+    root.mkdir()
+    (root / "tests").mkdir()
+    (root / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"這個永遠是綠的。\"\"\"\n    assert True\n",
+        encoding="utf-8",
+    )
+    (root / "scripts").mkdir()
+    (root / "scripts" / "run_tests.sh").write_text(
+        "#!/bin/sh\nexec python3 -m pytest tests/ -q \"$@\"\n", encoding="utf-8"
+    )
+    os.chmod(root / "scripts" / "run_tests.sh", 0o755)
+    git("init", "-q", "-b", "main", cwd=root)
+    # The initial baseline commit still needs *some* identity to be created
+    # at all; set one locally just long enough for it, then take it away
+    # again so the repo the hook runs against has none.
+    git("config", "user.email", "kit@example.com", cwd=root)
+    git("config", "user.name", "kit", cwd=root)
+    git("add", "-A", cwd=root)
+    git("commit", "-q", "-m", "initial", cwd=root)
+    git("config", "--unset", "user.email", cwd=root)
+    git("config", "--unset", "user.name", cwd=root)
+    git("config", "user.useConfigOnly", "true", cwd=root)
+    return root
+
+
+def test_commit_failure_from_missing_identity_blocks_with_the_fix_named(repo_no_identity):
+    """核心案例：從沒設定過 git 身份的使用者，測試是綠的，但存檔
+    （commit）會失敗。這時 hook 絕對不能落到 emit({})、讓使用者以為
+    存好了——要用 block 講清楚三件事：測試過了、存檔失敗了、git 的
+    實際錯誤是什麼，並且點名是身份沒設定，附上修好它的兩行指令。"""
+    before = git("rev-parse", "HEAD", cwd=repo_no_identity).strip()
+    (repo_no_identity / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    code, out, _ = run_hook(
+        "commit_if_green.py", {"stop_hook_active": False}, repo_no_identity
+    )
+
+    # No commit happened, and the hook did not report success.
+    assert git("rev-parse", "HEAD", cwd=repo_no_identity).strip() == before
+    assert out.get("decision") == "block"
+    reason = out["reason"]
+    assert "測試都通過了" in reason  # tests passed
+    assert "存檔" in reason and "失敗" in reason  # saving failed
+    assert "Please tell me who you are" in reason  # git's actual error
+    assert "user.name" in reason and "user.email" in reason  # identity named
+    assert "git config --global user.name" in reason  # the fix commands
+    assert "git config --global user.email" in reason
+
+
+def test_second_consecutive_commit_failure_does_not_block_again(repo_no_identity):
+    """存檔失敗已經擋過一次了，還是失敗就不再擋，理由跟測試紅時的
+    迴圈防呆一樣：不能把對話卡死在同一個訊息裡出不來。"""
+    (repo_no_identity / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    _, out, _ = run_hook(
+        "commit_if_green.py", {"stop_hook_active": True}, repo_no_identity
+    )
+
+    assert out.get("decision") != "block"
