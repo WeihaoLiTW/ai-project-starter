@@ -47,3 +47,26 @@ def test_load_rules_pattern_is_ready_for_re_search():
     assert "\\|" not in db_rule.pattern
     for keyword in ("SQLite", "Postgres", "PostgreSQL", "MySQL", "MongoDB"):
         assert re.search(db_rule.pattern, keyword), keyword
+
+
+def test_describing_a_greedy_coworker_is_not_forbidden():
+    """「貪婪」是形容一個人的日常中文形容詞，不是演算法問題。"""
+    assert forbidden_hits("這個員工很貪婪，一直要求加薪", RULES) == []
+
+
+def test_asking_to_split_a_shipment_is_not_forbidden():
+    """「要不要拆成」是業務上常見的措辭，不限於檔案結構。"""
+    assert forbidden_hits("要不要拆成兩批出貨", RULES) == []
+
+
+def test_the_word_reaction_does_not_trigger_react_framework_hit():
+    """React 沒有加詞界時會誤中 reaction 這個字裡面的子字串。"""
+    assert forbidden_hits("看使用者的 reaction 如何", RULES) == []
+
+
+def test_asking_which_frontend_framework_naming_react_is_still_forbidden():
+    """加了詞界之後，真的問到 React 這個框架時，仍然要判定為禁問，
+    證明詞界是收緊比對，而不是讓比對失效。"""
+    hits = forbidden_hits("前端要用 React 還是 Vue？", RULES)
+
+    assert "框架選型" in [h.category for h in hits]

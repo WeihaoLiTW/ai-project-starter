@@ -18,10 +18,19 @@ SCRIPTS_DIR = PLUGIN / "scripts"
 
 def test_session_start_injects_the_pillars_when_present():
     """設定檔存在時，開場注入要完整帶出三支柱裡「放手模式」與「翻譯是有損的」
-    這兩句，證明整份 pillars.md 真的被讀進去、而不是只回傳片段。"""
+    這兩句，證明整份 pillars.md 真的被讀進去、而不是只回傳片段。
+
+    明確傳入拿掉 CLAUDE_PLUGIN_ROOT 的環境變數，不繼承外部環境——機器上如果
+    剛好殘留一個指到別處的 CLAUDE_PLUGIN_ROOT，會讓 plugin_root() 悄悄走進
+    fallback 分支，測到的就不是這裡原本要測的路徑。
+    """
+    env = dict(os.environ)
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+
     proc = subprocess.run(
         [sys.executable, str(SCRIPTS_DIR / "session_start.py")],
         input="{}",
+        env=env,
         capture_output=True,
         text=True,
         timeout=30,

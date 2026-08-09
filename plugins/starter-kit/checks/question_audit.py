@@ -12,6 +12,17 @@ character", not "or" -- so a pipe-joined alternation cannot live inside a
 table cell without silently breaking. Keeping the column as a keyword list
 sidesteps the clash entirely: load_rules() below does the escaping and joins
 the keywords into a real alternation for re.search.
+
+Word-boundary anchoring: `\b` only fires at a transition between a "word"
+character (letter, digit, underscore) and a non-word character. Chinese text
+has no spaces between words, so two adjacent Chinese characters both count as
+"word" characters and `\b` never fires between them -- anchoring a Chinese
+keyword would silently stop it from matching at all, not tighten it. Anchors
+are therefore added only to keywords that contain no CJK character (pure
+Latin/ASCII terms such as `React` or `SQLite`), where `\b` correctly stops
+the keyword from matching inside a longer word (`React` no longer matches
+inside `reaction`). Any keyword that is pure Chinese, or mixes Chinese with
+Latin (e.g. "session 還是 token"), is left unanchored.
 """
 
 import re
@@ -21,6 +32,7 @@ from pathlib import Path
 RULES_FILE = Path(__file__).resolve().parent.parent / "behavior" / "forbidden-questions.md"
 ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|$", re.M)
 KEYWORD_SEP = "、"
+CJK_CHAR = re.compile(r"[一-鿿]")
 
 
 @dataclass(frozen=True)
@@ -29,6 +41,18 @@ class Rule:
     pattern: str
     why: str
     ask_instead: str
+
+
+def _anchored_pattern(keyword):
+    """Escape one keyword and add `\\b` anchors only where they help.
+
+    See the module docstring for why anchoring is skipped for any keyword
+    that contains a CJK character.
+    """
+    escaped = re.escape(keyword)
+    if CJK_CHAR.search(keyword):
+        return escaped
+    return rf"\b{escaped}\b"
 
 
 def load_rules(path=RULES_FILE):
@@ -42,7 +66,7 @@ def load_rules(path=RULES_FILE):
     rules = []
     for category, keywords_cell, why, ask_instead in ROW.findall(text):
         keywords = [k.strip() for k in keywords_cell.split(KEYWORD_SEP) if k.strip()]
-        pattern = "|".join(re.escape(k) for k in keywords)
+        pattern = "|".join(_anchored_pattern(k) for k in keywords)
         rules.append(Rule(category=category, pattern=pattern, why=why, ask_instead=ask_instead))
     return rules
 
