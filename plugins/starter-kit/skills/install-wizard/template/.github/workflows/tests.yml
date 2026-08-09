@@ -1,0 +1,76 @@
+name: tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.10 mirrors the Cowork VM, 3.12 mirrors nothing yet but catches
+        # breakage before the VM moves. Same tests, two runtimes.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -r requirements.lock.txt
+      - name: Run the tests
+        run: sh scripts/run_tests.sh
+      - name: Check the glossary
+        run: python3 scripts/check_glossary.py
+      - name: Check CI and local agree
+        run: python3 scripts/check_ci_superset.py
+
+  deploy-safety:
+    # A red X here right after the template is created almost always means
+    # the two production values below are not configured yet, not that
+    # something is broken. The "Check required settings are configured"
+    # step exists to say that in plain language before Django's own crash
+    # (an empty SECRET_KEY raises ImproperlyConfigured, a raw traceback)
+    # gets a chance to confuse whoever is looking at the log.
+    name: "deploy-safety（紅燈常見原因：secrets 還沒設定）"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: pip install -r requirements.lock.txt
+      - name: Check required settings are configured
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          DJANGO_ALLOWED_HOSTS: ${{ vars.DJANGO_ALLOWED_HOSTS }}
+        run: |
+          missing=0
+          if [ -z "$DJANGO_SECRET_KEY" ]; then
+            echo "還沒有設定 GitHub secret「DJANGO_SECRET_KEY」。"
+            missing=1
+          fi
+          if [ -z "$DJANGO_ALLOWED_HOSTS" ]; then
+            echo "還沒有設定 GitHub variable「DJANGO_ALLOWED_HOSTS」。"
+            missing=1
+          fi
+          if [ "$missing" = "1" ]; then
+            echo ""
+            echo "這個 job 檢查的是「正式環境設定安不安全」，樣板剛建立時這兩個值本來就還沒填，所以現在是紅的——這是正常現象，不是程式壞了。"
+            echo "到這個 repo 的 Settings > Secrets and variables > Actions 補上這兩個值之後，這裡就會轉綠。"
+            exit 1
+          fi
+          echo "正式環境變數都已設定，繼續檢查。"
+      - name: Check the production settings
+        env:
+          DJANGO_SETTINGS_MODULE: project.settings.prod
+          DJANGO_DEBUG: "0"
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          DJANGO_ALLOWED_HOSTS: ${{ vars.DJANGO_ALLOWED_HOSTS }}
+          DATA_DIR: /tmp
+        run: |
+          python3 manage.py check --deploy --fail-level WARNING
+          python3 scripts/check_deploy.py
