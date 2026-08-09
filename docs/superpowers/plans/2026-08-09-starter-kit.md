@@ -376,50 +376,80 @@ def test_second_consecutive_failure_does_not_block_again(repo):
 
 ```python
 # tests/test_health_check.py
-def test_history_probe_reports_green_when_every_commit_passes(repo):
-    """歷史上每個 commit 都是綠的，抽驗結果為通過。"""
-    from checks.probes.history import probe
+import sys
+import types
 
-    result = probe({"repo": str(repo), "sample": 3})
-
-    assert result.ok is True
+from checks.model import CheckResult
+from checks.runner import run_all
 
 
-def test_history_probe_names_the_commit_that_fails(repo):
-    """歷史上有一個 commit 是紅的，抽驗要指名是哪一個。"""
-    from conftest import git
-    from checks.probes.history import probe
+def ok_probe(facts):
+    return CheckResult(id="ok", title="一切正常", ok=True, detail="")
 
-    (repo / "tests" / "test_ok.py").write_text(
-        "def test_ok():\n    \"\"\"這一版是紅的。\"\"\"\n    assert False\n",
-        encoding="utf-8",
+
+def failing_probe(facts):
+    return CheckResult(id="bad", title="這項不通", ok=False, detail="缺了東西")
+
+
+def exploding_probe(facts):
+    raise RuntimeError("探針自己爆了")
+
+
+def test_one_red_item_does_not_affect_the_others():
+    """有一項不通，其餘各項照常給出自己的結果。"""
+    results = run_all({}, [ok_probe, failing_probe, ok_probe])
+
+    assert [r.ok for r in results] == [True, False, True]
+
+
+def test_a_probe_that_crashes_becomes_a_red_item_not_a_dead_report():
+    """探針自己壞掉，變成那一項紅燈，整份報告還是產得出來。"""
+    results = run_all({}, [ok_probe, exploding_probe, ok_probe])
+
+    assert len(results) == 3
+    assert results[1].ok is False
+    assert "探針自己爆了" in results[1].detail
+
+
+def test_the_report_covers_all_nine_items():
+    """正式的九項探針，一項不多一項不少。"""
+    from checks.runner import default_probes
+
+    assert len(default_probes()) == 9
+
+
+def test_all_nine_probes_are_real_not_placeholders_expected_red_until_task_13():
+    """刻意保留的紅燈：在 Task 13 把九個真正的探針全部寫完之前，這個測試都應該是
+    失敗的。它檢查的是「沒有任何一項是佔位版本」，不是「湊得出九個東西」——
+    不要為了讓它變綠而放寬這個判斷條件，也不要用字串比對報告文字取代它。
+    """
+    from checks.runner import default_probes
+
+    probes = default_probes()
+    placeholders = [p for p in probes if getattr(p, "is_placeholder", False)]
+
+    assert not placeholders, (
+        f"還有 {len(placeholders)} 個探針是佔位版本，尚未被 Task 13 的真正探針取代"
     )
-    git("add", "-A", cwd=repo)
-    git("commit", "-q", "-m", "broken", cwd=repo)
-    bad = git("rev-parse", "HEAD", cwd=repo).strip()
-
-    result = probe({"repo": str(repo), "sample": 99})
-
-    assert result.ok is False
-    assert bad[:7] in result.detail
 
 
-def test_checking_history_leaves_the_working_folder_exactly_as_it_was(repo):
-    """抽驗歷史版本的時候，使用者正在改的東西一個字都不會變。"""
-    from conftest import git
-    from checks.probes.history import probe
+def test_default_probes_contains_an_execution_time_failure_end_to_end(monkeypatch):
+    """走完整的 default_probes() 路徑：某個探針模組匯入成功，但一執行就爆炸，
+    仍然只讓那一項變紅，其餘結果照樣都在——證明 containment 不只對手寫的假探針
+    有效，對透過 default_probes() 載入的真實模組也一樣。"""
+    fake_module = types.ModuleType("checks.probes.environment")
 
-    (repo / "tests" / "test_wip.py").write_text(
-        "def test_wip():\n    \"\"\"還在寫。\"\"\"\n    assert True\n", encoding="utf-8"
-    )
-    before_branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip()
-    before_status = git("status", "--porcelain", cwd=repo)
+    def exploding(facts):
+        raise RuntimeError("執行時炸了")
 
-    probe({"repo": str(repo), "sample": 99})
+    fake_module.probe = exploding
+    monkeypatch.setitem(sys.modules, "checks.probes.environment", fake_module)
 
-    assert git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip() == before_branch
-    assert git("status", "--porcelain", cwd=repo) == before_status
-    assert (repo / "tests" / "test_wip.py").exists()
+    results = run_all({})
+
+    assert len(results) == 9
+    assert results[0].ok is False
+    assert "執行時炸了" in results[0].detail
 ```
 
 > **期望值來源**：spec 成功定義 #8「git 歷史上任意一個 commit checkout 出來，`pytest` 皆為綠」。`sample` 讓健檢抽驗、讓測試全驗，是為了滿足 spec 驗證方式的「全部條件可在單一 session 內完成」。
@@ -3365,32 +3395,71 @@ take the report down with it: a report that fails to render is exactly the
 silent skip the spec forbids.
 """
 
+import importlib
 import traceback
 
 from .model import CheckResult
+
+PROBE_MODULE_NAMES = (
+    "environment",
+    "toolchain",
+    "suite",
+    "safety_net",
+    "history",
+    "github",
+    "zeabur",
+    "service",
+    "data",
+)
+
+
+def _placeholder_probe(module_name, error):
+    """A stand-in for a probe module that failed to import.
+
+    Marked with `is_placeholder = True` on the returned callable so callers
+    can tell a stand-in apart from a real probe by attribute, without
+    string-matching the (translatable) report text.
+    """
+
+    def probe(facts):
+        return CheckResult(
+            id=module_name,
+            title="這一項檢查沒有載入",
+            ok=False,
+            detail=f"{module_name} 探針匯入失敗：{error}",
+            hint=(
+                "這項檢查本身沒有成功載入，所以完全沒有執行——"
+                "代表這個地方目前是「沒被檢查」，不是「沒問題」。"
+                "請把這則錯誤回報給維護者，修好探針本身。"
+            ),
+        )
+
+    probe.is_placeholder = True
+    probe.__module__ = f"checks.probes.{module_name}"
+    return probe
 
 
 def default_probes():
     """The nine probes, in report order.
 
-    Imported inside the function so this module stays importable while the
-    probes are still being written, one task at a time.
+    Each of the nine probe modules is imported individually, inside this
+    function, so this module stays importable while the probes are still
+    being written, one task at a time. Each import is isolated in its own
+    try/except: a module that fails to import does not take the rest of the
+    run down with it. Its slot is instead filled by a placeholder probe
+    (see `_placeholder_probe`) that reports a red `CheckResult` naming the
+    module and the import error. `default_probes()` therefore always
+    returns nine callables, in the order above, even if some of the probe
+    modules do not exist yet.
     """
-    from .probes import (
-        data, environment, github, history, safety_net, service, suite, toolchain, zeabur,
-    )
-
-    return [
-        environment.probe,
-        toolchain.probe,
-        suite.probe,
-        safety_net.probe,
-        history.probe,
-        github.probe,
-        zeabur.probe,
-        service.probe,
-        data.probe,
-    ]
+    probes = []
+    for name in PROBE_MODULE_NAMES:
+        try:
+            module = importlib.import_module(f".probes.{name}", package=__package__)
+            probes.append(module.probe)
+        except Exception as exc:  # noqa: BLE001 - containment is the point
+            probes.append(_placeholder_probe(name, exc))
+    return probes
 
 
 def run_all(facts, probes=None):
