@@ -99,15 +99,26 @@ def test_non_object_json_array_returns_empty_dict():
     assert stderr.strip() != ""
 
 
+def test_deeply_nested_json_returns_empty_dict():
+    """極度嵌套的 JSON（超過遞迴限制）不該讓程式爆掉，應該回傳空 dict。"""
+    deeply_nested = b"[" * 4000 + b"]" * 4000
+    code, result, stderr = _invoke_read_payload(deeply_nested)
+    assert code == 0
+    assert result == {}
+
+
 def test_canary_survives_hostile_payloads(tmp_path):
     """這是真正保護使用者檔案編輯的那道測試：PreToolUse canary 拿到這些惡意
     payload 時都不能讓 hook process 以非 0 結束，否則使用者的 Write/Edit 會被
     未攔截的例外中斷。"""
     hostile_payloads = [
+        b"",
+        b"{}",
         b"not json at all",
         b"\xff\xfe\x00garbage",
         b"42",
         b"[1,2]",
+        b"[" * 4000 + b"]" * 4000,
     ]
     for raw in hostile_payloads:
         code, stderr = _invoke_canary(raw, cwd=tmp_path)

@@ -48,7 +48,7 @@ def read_payload():
 
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         sys.stderr.write(f"Failed to parse hook payload: {exc}\n")
         return {}
 
