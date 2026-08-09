@@ -1,8 +1,6 @@
 import subprocess
 import sys
 
-from conftest import TEMPLATE
-
 
 def run_check(env, cwd):
     return subprocess.run(

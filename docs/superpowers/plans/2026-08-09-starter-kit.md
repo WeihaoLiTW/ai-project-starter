@@ -514,8 +514,6 @@ def test_an_untracked_env_file_never_gets_committed(repo):
 import subprocess
 import sys
 
-from conftest import TEMPLATE
-
 
 def run_check(env, cwd):
     return subprocess.run(
