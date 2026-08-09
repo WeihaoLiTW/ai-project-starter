@@ -125,3 +125,54 @@ def test_checking_history_leaves_the_working_folder_exactly_as_it_was(repo):
     assert git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip() == before_branch
     assert git("rev-parse", "HEAD", cwd=repo).strip() == before_head
     assert git("status", "--porcelain", cwd=repo) == before_status
+
+
+def test_the_cli_is_named_when_it_is_reachable():
+    """CLI 這條路通的時候，報告指名走 CLI。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": True, "mcp": True, "browser": True}})
+
+    assert result.ok is True
+    assert result.detail.startswith("CLI")
+
+
+def test_mcp_is_named_when_the_cli_is_blocked():
+    """CLI 不通、MCP 通，報告指名走 MCP。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": False, "mcp": True, "browser": True}})
+
+    assert result.ok is True
+    assert result.detail.startswith("MCP")
+
+
+def test_the_browser_is_named_when_it_is_the_only_one_left():
+    """只剩瀏覽器可用，報告指名走瀏覽器。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": True}})
+
+    assert result.ok is True
+    assert result.detail.startswith("瀏覽器")
+
+
+def test_all_three_blocked_turns_the_item_red_with_a_reason():
+    """三條路都不通，這一項紅燈，而且說得出三條各自為什麼不通。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": False}})
+
+    assert result.ok is False
+    for name in ("CLI", "MCP", "瀏覽器"):
+        assert name in result.detail
+
+
+def test_a_named_path_without_a_proven_operation_is_red():
+    """指名了一條路，但沒有實際跑成功一次操作，這一項不算過。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": True, "mcp": False, "browser": False,
+                               "proven": False}})
+
+    assert result.ok is False
