@@ -1302,7 +1302,7 @@ pytest-django>=4.9,<5.0
 # The one and only way tests are run. CI calls this same script, so a green
 # run here means a green run there.
 set -e
-exec python3 -m pytest tests/ "$@"
+exec "${PYTHON:-python3}" -m pytest tests/ "$@"
 ```
 
 `pytest.ini`：
@@ -1767,29 +1767,24 @@ from pathlib import Path
 
 REPORT = Path("reports/test-report.html")
 
+_docs = {}
 _results = []
+
+
+def pytest_itemcollected(item):
+    _docs[item.nodeid] = (item.function.__doc__ or "").strip()
 
 
 def pytest_runtest_logreport(report):
     if report.when != "call":
         return
-    _results.append((report.nodeid, report.passed, getattr(report, "_doc", "")))
-
-
-def pytest_itemcollected(item):
-    item._obj_doc = (item.function.__doc__ or "").strip()
-
-
-def pytest_runtest_makereport(item, call):
-    if call.when == "call":
-        item.session._last_doc = getattr(item, "_obj_doc", "")
+    _results.append((report.nodeid, report.passed))
 
 
 def pytest_sessionfinish(session, exitstatus):
     rows = []
-    for nodeid, passed, _ in _results:
-        item = next((i for i in session.items if i.nodeid == nodeid), None)
-        doc = getattr(item, "_obj_doc", "") if item else ""
+    for nodeid, passed in _results:
+        doc = _docs.get(nodeid, "")
         mark = "通過" if passed else "沒過"
         colour = "#2f7d32" if passed else "#c62828"
         rows.append(
@@ -1797,14 +1792,14 @@ def pytest_sessionfinish(session, exitstatus):
             f"<td>{html.escape(doc) or html.escape(nodeid)}</td></tr>"
         )
     total = len(_results)
-    failed = sum(1 for _, passed, _ in _results if not passed)
+    failed = sum(1 for _, passed in _results if not passed)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
         "<!DOCTYPE html><html lang=\"zh-Hant\"><head><meta charset=\"utf-8\">"
         "<title>測試報告</title></head><body>"
-        f"<h1>這個系統保證會做的事</h1>"
+        "<h1>這個系統保證會做的事</h1>"
         f"<p>共 {total} 項，沒過 {failed} 項。</p>"
-        "<table border=\"1\" cellpadding=\"6\">" + "".join(rows) + "</table>"
+        '<table border="1" cellpadding="6">' + "".join(rows) + "</table>"
         "</body></html>",
         encoding="utf-8",
     )
