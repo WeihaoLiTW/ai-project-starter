@@ -1225,7 +1225,7 @@ git add .claude-plugin plugins/starter-kit pytest.ini tests/
 git commit -m "feat: add plugin skeleton and a canary that proves hooks fire"
 ```
 
-- [ ] **Step 7:（人工）在真的 Cowork 上裝一次，驗掉三個假設**
+- [ ] **Step 8:（人工）在真的 Cowork 上裝一次，驗掉三個假設**
 
 推上 GitHub 之後，在 Claude Desktop 的 Cowork 分頁：Customize → Plugins → Personal plugins → 「+」→ Add marketplace → 輸入 `owner/ai-project-starter` → 裝 `starter-kit`。開一個新對話，隨便寫一個檔案，然後結束該輪。
 
@@ -3862,7 +3862,7 @@ git commit -m "docs: add the prompt to paste and the walkthrough it has to survi
 實作全部完成、34 個測試全綠之後，**還有九件事只能人工驗**，清單在上面的
 「需人工驗證的條件」。其中兩件會決定要不要回頭改設計：
 
-1. **Task 1 Step 7 的三個 Cowork 平台假設。** `Stop` hook 不會觸發的話，
+1. **Task 1 Step 8 的三個 Cowork 平台假設。** `Stop` hook 不會觸發的話，
    整個保命繩設計不成立，要回頭改 spec。這是唯一一個「沒過就不能往下做」的檢查點。
 2. **成功條件 #12 的走查。** 它測的是文件，不是程式，而且走查者知道太多這件事
    在這裡是優點 —— 每動用一次文件外的知識，就精準定位到一個文件缺口。
