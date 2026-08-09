@@ -8,3 +8,15 @@
 
 # Secrets / local config
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Scratch space for the plan execution workflow
+.superpowers/
+
+# Left behind by the Task 1 canary while verifying hooks fire
+hook-canary.log

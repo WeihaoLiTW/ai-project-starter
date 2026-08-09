@@ -13,6 +13,9 @@
 每個 task 的要求都隱含包含這一段。
 
 - **Python 下限 3.10。** Cowork 本機 VM 實測為 Python 3.10.12，樣板必須在 3.10 上跑得起來。
+- **kit 自己的測試一律用 repo 根目錄的 `.venv/bin/python` 跑，不要用系統的 `python3`。**
+  開發機的系統 Python 可能舊到裝不了 Django 5.2（實際遇到 3.9.6），那會讓樣板的測試
+  以一個跟真正原因無關的錯誤失敗。建立方式：`uv venv --python 3.10 .venv`。
 - **Django 版本為 5.2 LTS**，安全支援至 2028-04，支援 Python 3.10–3.14。`requirements.txt` 寫 `Django>=5.2,<6.0`。
 - **hook 與 check 腳本只准用 Python 標準庫。** 這些東西在 pip 裝壞掉、網路不通、venv 沒啟動的情況下都必須能跑。一個依賴都不能加。
 - **樣板的測試套件執行時間 < 30 秒**（spec 成功定義 #2）。
