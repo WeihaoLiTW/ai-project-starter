@@ -766,6 +766,44 @@ def test_a_workflow_with_its_own_pytest_call_is_rejected():
     bad = "jobs:\n  t:\n    steps:\n      - run: pytest tests/ -k slow\n"
 
     assert stray_test_commands(bad) == ["pytest tests/ -k slow"]
+
+
+def test_entrypoint_mentioned_only_in_a_comment_does_not_count():
+    """只在註解裡提到 scripts/run_tests.sh，不代表 workflow 真的有跑它。"""
+    workflow = (
+        "jobs:\n"
+        "  t:\n"
+        "    steps:\n"
+        "      # this step used to call scripts/run_tests.sh directly\n"
+        "      - run: echo hi\n"
+    )
+
+    assert uses_shared_entrypoint(workflow) is False
+
+
+def test_pytest_mentioned_only_in_a_comment_is_not_a_stray_command():
+    """pytest 這個字只出現在註解裡，不該被算成另一條測試路徑。"""
+    workflow = (
+        "jobs:\n"
+        "  t:\n"
+        "    steps:\n"
+        "      - run: scripts/run_tests.sh\n"
+        "      # this used to call pytest directly before we switched\n"
+    )
+
+    assert stray_test_commands(workflow) == []
+
+
+def test_pytest_mentioned_only_in_a_step_name_is_still_flagged():
+    """pytest 只出現在 step 的 name 欄位（不是 run 指令），目前的實作還是會抓成 stray。
+
+    這是誠實的限制，不是保證:模組只用逐行比對，沒有解析 YAML，所以分不出
+    `name:` 欄位跟 `run:` 指令的差別。`name: run pytest twice` 只是敘述文字，
+    但程式碼看不出來，於是照樣把它當成一條可疑的測試指令回報。
+    """
+    workflow = "jobs:\n  t:\n    steps:\n      - name: run pytest twice\n"
+
+    assert stray_test_commands(workflow) == ["- name: run pytest twice"]
 ```
 
 > **期望值來源**：spec 測試設計「CI 跑的測試必須是 local 測試的超集，破了這條就會出現『我這邊都綠的，為什麼 CI 紅了』」。做法是把「超集」收斂成「同一個入口 + 不得有第二條測試路徑」，因為這樣才驗得動。
@@ -2181,8 +2219,15 @@ Expected: FAIL，`ModuleNotFoundError: No module named 'check_ci_superset'`。
 """Keep CI and local on one test path.
 
 Parsing YAML would need a dependency, and these scripts are standard library
-only. The workflow is ours, so matching on lines is enough and honest about
-what it can see.
+only. The workflow is ours, so matching on lines is enough — but it is only
+line matching, not a YAML parser. Comment lines (first non-whitespace
+character is '#') are excluded from both checks below, so a script name or
+the word "pytest" mentioned only in a comment does not count as evidence of
+anything. Anything else on a line is treated as executable: a step's `name:`
+field that happens to contain the word "pytest" is indistinguishable from a
+real `run:` command and will still be flagged. This module can tell an
+executable line from a comment; it cannot tell a `run:` command from
+arbitrary prose.
 """
 
 import re
@@ -2190,18 +2235,30 @@ import sys
 from pathlib import Path
 
 ENTRYPOINT = "scripts/run_tests.sh"
-TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$", re.MULTILINE)
+TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$")
+
+
+def _is_comment_line(line):
+    """A line whose first non-whitespace character is '#'."""
+    return line.lstrip().startswith("#")
 
 
 def uses_shared_entrypoint(workflow):
-    """True when the workflow runs the same script local runs."""
-    return ENTRYPOINT in workflow
+    """True when a non-comment line runs the same script local runs."""
+    for line in workflow.splitlines():
+        if _is_comment_line(line):
+            continue
+        if ENTRYPOINT in line:
+            return True
+    return False
 
 
 def stray_test_commands(workflow):
     """Test invocations that bypass the shared entrypoint."""
     stray = []
     for line in workflow.splitlines():
+        if _is_comment_line(line):
+            continue
         if ENTRYPOINT in line:
             continue
         match = TEST_COMMAND.match(line)
