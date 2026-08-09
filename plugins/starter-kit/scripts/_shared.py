@@ -6,6 +6,7 @@ network is down, and when no virtualenv is active.
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -114,3 +115,46 @@ def plugin_root():
 
     sys.stderr.write(f"CLAUDE_PLUGIN_ROOT={env} does not exist; using fallback\n")
     return fallback
+
+
+# Path patterns describing what counts as a secret file. Shared by
+# guard_secrets.py (refuses to write these) and commit_if_green.py (refuses
+# to commit these even if they reached disk some other way, e.g. created
+# directly rather than through a Write/Edit tool call). One definition, so
+# the two hooks cannot drift apart on what counts as a secret.
+#
+# `.env.example` is checked first: it is the conventional, version-controlled
+# template that documents which environment variables a project needs, not a
+# real credential. Anchored with \Z (not $) so a trailing newline in the path
+# string cannot slip a distinct filename like ".env.example\n" through as if
+# it were the exact allowed name.
+SECRET_PATH_ALLOWED = [
+    re.compile(r"(^|/)\.env\.example\Z"),
+]
+
+SECRET_PATH_BLOCKED = [
+    (re.compile(r"(^|/)\.env(\.|$)"), "環境變數檔"),
+    (re.compile(r"(^|/)id_(rsa|dsa|ecdsa|ed25519)$"), "SSH 私鑰"),
+    (re.compile(r"\.(pem|key|p12|pfx)$"), "憑證或私鑰"),
+    (re.compile(r"credentials?\.json$"), "雲端服務憑證"),
+    (re.compile(r"(^|/)\.netrc$"), "登入資訊檔"),
+]
+
+
+def secret_label(path):
+    """The human-readable label for the secret category `path` matches, or
+    None if `path` does not look like a secret.
+
+    This only judges the path string, the same way commit_if_green.py needs
+    to (files on disk at commit time, no `tool_input.content` to inspect).
+    guard_secrets.py additionally inspects file content for the
+    `.env.example` case, which is a Write-time concern this function does
+    not need to cover.
+    """
+    for allowed in SECRET_PATH_ALLOWED:
+        if allowed.search(path):
+            return None
+    for pattern, label in SECRET_PATH_BLOCKED:
+        if pattern.search(path):
+            return label
+    return None

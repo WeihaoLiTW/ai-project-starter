@@ -39,10 +39,11 @@ def _invoke_read_payload(raw_stdin: bytes):
     return proc.returncode, parsed, stderr
 
 
-def _invoke_canary(raw_stdin: bytes, cwd):
-    """用真正的 PreToolUse canary hook 跑一次，回傳 (exit code, stderr 文字)。"""
+def _invoke_guard_secrets(raw_stdin: bytes, cwd):
+    """用真正掛在 PreToolUse 上的 guard_secrets hook 跑一次，回傳
+    (exit code, stderr 文字)。"""
     proc = subprocess.run(
-        [sys.executable, str(SCRIPTS_DIR / "canary.py"), "PreToolUse"],
+        [sys.executable, str(SCRIPTS_DIR / "guard_secrets.py")],
         input=raw_stdin,
         cwd=cwd,
         capture_output=True,
@@ -107,10 +108,10 @@ def test_deeply_nested_json_returns_empty_dict():
     assert result == {}
 
 
-def test_canary_survives_hostile_payloads(tmp_path):
-    """這是真正保護使用者檔案編輯的那道測試：PreToolUse canary 拿到這些惡意
-    payload 時都不能讓 hook process 以非 0 結束，否則使用者的 Write/Edit 會被
-    未攔截的例外中斷。"""
+def test_guard_secrets_survives_hostile_payloads(tmp_path):
+    """這是真正保護使用者檔案編輯的那道測試：PreToolUse 上真正掛著的
+    guard_secrets 拿到這些惡意 payload 時都不能讓 hook process 以非 0 結束，
+    否則使用者的 Write/Edit 會被未攔截的例外中斷。"""
     hostile_payloads = [
         b"",
         b"{}",
@@ -121,5 +122,5 @@ def test_canary_survives_hostile_payloads(tmp_path):
         b"[" * 4000 + b"]" * 4000,
     ]
     for raw in hostile_payloads:
-        code, stderr = _invoke_canary(raw, cwd=tmp_path)
-        assert code == 0, f"canary.py exited {code} for payload {raw!r}: {stderr}"
+        code, stderr = _invoke_guard_secrets(raw, cwd=tmp_path)
+        assert code == 0, f"guard_secrets.py exited {code} for payload {raw!r}: {stderr}"

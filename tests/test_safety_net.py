@@ -1,12 +1,8 @@
-"""B4：密鑰擋門。
-
-第三個測試（未追蹤的 `.env` 不會被 commit）留到 Task 10——那個測試依賴
-還沒寫出來的 commit hook，這裡先不寫假的。
-"""
+"""B2：測試紅的時候不會產生 commit。B4：密鑰擋門。"""
 
 import pytest
 
-from conftest import run_hook
+from conftest import git, run_hook
 
 SECRET_FILES = [
     ".env",
@@ -149,3 +145,78 @@ def test_null_tool_input_does_not_crash_the_hook(tmp_path):
 
     assert code == 0
     assert response == {}
+
+
+def test_red_suite_leaves_history_untouched(repo):
+    """改動讓測試變紅，對話結束後 git 歷史沒有新 commit。"""
+    before = git("rev-parse", "HEAD", cwd=repo).strip()
+    (repo / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"這個現在是紅的。\"\"\"\n    assert False\n",
+        encoding="utf-8",
+    )
+
+    code, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert git("rev-parse", "HEAD", cwd=repo).strip() == before
+    assert out["decision"] == "block"
+    assert git("status", "--porcelain", cwd=repo).strip() != ""
+
+
+def test_red_suite_tells_claude_to_fix_it(repo):
+    """測試紅的時候，回饋訊息說得出是哪個測試壞了。"""
+    (repo / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"這個現在是紅的。\"\"\"\n    assert False\n",
+        encoding="utf-8",
+    )
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert "test_ok" in out["reason"]
+
+
+def test_green_suite_produces_exactly_one_commit(repo):
+    """測試綠的時候，對話結束後多一個 commit，而且只多一個。"""
+    before = int(git("rev-list", "--count", "HEAD", cwd=repo).strip())
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"另一個綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    code, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    after = int(git("rev-list", "--count", "HEAD", cwd=repo).strip())
+    assert after == before + 1
+    assert out.get("decision") != "block"
+
+
+def test_nothing_changed_means_no_commit(repo):
+    """這一輪沒動到任何檔案，不會產生空的 commit。"""
+    before = int(git("rev-list", "--count", "HEAD", cwd=repo).strip())
+
+    run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert int(git("rev-list", "--count", "HEAD", cwd=repo).strip()) == before
+
+
+def test_second_consecutive_failure_does_not_block_again(repo):
+    """已經擋過一次還是紅的，就不再擋，避免對話卡死在同一個迴圈。"""
+    (repo / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"還是紅的。\"\"\"\n    assert False\n",
+        encoding="utf-8",
+    )
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": True}, repo)
+
+    assert out.get("decision") != "block"
+
+
+def test_an_untracked_env_file_never_gets_committed(repo):
+    """工作區裡有沒被追蹤的 .env，自動 commit 不會把它納進去。"""
+    (repo / ".env").write_text("SECRET_KEY=real-one\n", encoding="utf-8")
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    tracked = git("ls-files", cwd=repo).splitlines()
+    assert ".env" not in tracked

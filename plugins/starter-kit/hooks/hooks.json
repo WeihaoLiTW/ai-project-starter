@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/canary.py Stop"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/commit_if_green.py"
           }
         ]
       }

@@ -30,26 +30,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _shared import emit, read_payload
+from _shared import emit, read_payload, SECRET_PATH_ALLOWED, SECRET_PATH_BLOCKED
 
-# Conventionally checked into version control on purpose: empty key names
-# meant to document which environment variables a project needs, not actual
-# secrets. Checked before BLOCKED so the template reading never reaches the
-# .env rule below. Anchored with \Z (not $) so a trailing newline in the
-# path string cannot slip a distinct filename like ".env.example\n" through
-# as if it were the exact allowed name — an allow-list is the one place
-# where a loose anchor fails open instead of closed.
-ALLOWED = [
-    re.compile(r"(^|/)\.env\.example\Z"),
-]
-
-BLOCKED = [
-    (re.compile(r"(^|/)\.env(\.|$)"), "環境變數檔"),
-    (re.compile(r"(^|/)id_(rsa|dsa|ecdsa|ed25519)$"), "SSH 私鑰"),
-    (re.compile(r"\.(pem|key|p12|pfx)$"), "憑證或私鑰"),
-    (re.compile(r"credentials?\.json$"), "雲端服務憑證"),
-    (re.compile(r"(^|/)\.netrc$"), "登入資訊檔"),
-]
+# ALLOWED/BLOCKED live in _shared.py so commit_if_green.py judges the same
+# paths the same way — an allow-list checked before a block-list is the one
+# place where a loose anchor fails open instead of closed, which is why
+# _shared.py anchors `.env.example` with \Z rather than $.
+ALLOWED = SECRET_PATH_ALLOWED
+BLOCKED = SECRET_PATH_BLOCKED
 
 # Key names that look like they hold a credential. Deliberately broad: any
 # key containing one of these substrings, or ending in _KEY.
