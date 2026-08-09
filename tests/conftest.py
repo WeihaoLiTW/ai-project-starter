@@ -53,3 +53,32 @@ def run_hook(script_name, payload, cwd):
     )
     out = proc.stdout.strip()
     return proc.returncode, (json.loads(out) if out else {}), proc.stderr
+
+
+@pytest.fixture
+def installed_project(tmp_path):
+    """把樣板複製出來、裝好依賴的一份專案。"""
+    import shutil
+
+    project = tmp_path / "proj"
+    shutil.copytree(TEMPLATE, project)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "-r",
+         str(project / "requirements.lock.txt")],
+        check=True,
+    )
+    return project
+
+
+@pytest.fixture
+def prod_env():
+    """一組設定正確的正式環境變數。"""
+    env = dict(os.environ)
+    env.update(
+        DJANGO_SETTINGS_MODULE="project.settings.prod",
+        DJANGO_DEBUG="0",
+        DJANGO_SECRET_KEY="a-real-secret-key-generated-at-install-time-0123456789",
+        DJANGO_ALLOWED_HOSTS="example.zeabur.app",
+        DATA_DIR="/tmp",
+    )
+    return env
