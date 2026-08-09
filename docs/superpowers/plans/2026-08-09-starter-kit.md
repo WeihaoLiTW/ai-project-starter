@@ -3633,29 +3633,44 @@ from ..model import CheckResult
 MIN_SQLITE = (3, 27, 0)
 
 
+def platform_version():
+    return ".".join(str(part) for part in sys.version_info[:3])
+
+
 def probe(facts):
     problems = []
+    hints = []
     if sys.version_info < (3, 10):
-        problems.append(f"Python 太舊（{platform_version()}），需要 3.10 以上。")
+        problems.append(
+            f"Python 版本是 {platform_version()}，太舊了，這個專案需要 3.10 以上才能"
+            "執行。版本不夠新的話，程式一啟動就會報錯，整個專案在這台機器上完全跑不"
+            "起來。"
+        )
+        hints.append("跟我說一聲，我幫你確認能不能裝新版 Python，並帶你更新。")
     version = tuple(int(part) for part in sqlite3.sqlite_version.split("."))
     if version < MIN_SQLITE:
         problems.append(
-            f"SQLite 是 {sqlite3.sqlite_version}，備份用的功能需要 3.27.0 以上。"
+            f"SQLite（存資料用的資料庫引擎）版本是 {sqlite3.sqlite_version}，太舊了，"
+            "備份功能需要 3.27.0 以上才能正常運作。版本不夠的話，備份可能建立失敗，"
+            "或是建出來卻是壞的，等於你以為有備份，出事故時其實救不回資料。"
         )
+        hints.append("跟我說一聲，我幫你確認怎麼更新 SQLite（通常要一併更新 Python 版本）。")
     code, out, _ = run(["git", "--version"], cwd=".")
     if code != 0:
-        problems.append("找不到 git。")
+        problems.append(
+            "找不到 git（版本控制工具，用來記錄程式碼的變更歷史，也負責把改動送上 "
+            "GitHub 觸發部署）。沒有它，你的改動沒辦法被存成紀錄，也沒辦法推上線，"
+            "等於這台機器完全沒辦法把工作成果部署出去。"
+        )
+        hints.append("跟我說一聲，我幫你確認怎麼安裝 git（Mac 用 Homebrew，Windows 用官方安裝檔）。")
     return CheckResult(
         id="toolchain",
         title="工具鏈",
         ok=not problems,
         detail="；".join(problems)
         or f"Python {platform_version()}、SQLite {sqlite3.sqlite_version}、{out.strip()}",
+        hint="；".join(hints),
     )
-
-
-def platform_version():
-    return ".".join(str(part) for part in sys.version_info[:3])
 ```
 
 `plugins/starter-kit/checks/_shim.py` 讓 checks 用得到 hook 的共用函式：
@@ -3826,13 +3841,25 @@ from ..model import CheckResult
 def probe(facts):
     info = facts.get("github", {})
     if not info.get("repo"):
-        return CheckResult(id="github", title="GitHub", ok=False,
-                           detail="還沒有對應的 repo。")
+        return CheckResult(
+            id="github", title="GitHub", ok=False,
+            detail=(
+                "這個專案還沒有建立對應的 GitHub repo（存放程式碼、也是部署流程抓"
+                "版本上線的地方）。沒有它，程式碼只存在這台機器上——機器壞掉或換一"
+                "台電腦，工作成果就全部不見了，也沒辦法部署上線。"
+            ),
+            hint="跟我說一聲，我幫你建立 repo 並把現有的程式碼推上去。",
+        )
     if info.get("last_conclusion") != "success":
         return CheckResult(
             id="github", title="GitHub", ok=False,
-            detail=f"{info['repo']} 有了，但 Actions 最近一次是 "
-                   f"{info.get('last_conclusion') or '從來沒跑過'}。",
+            detail=(
+                f"{info['repo']} 有了，但 GitHub Actions（每次推程式碼上去，自動幫"
+                f"你跑測試、部署的流程）最近一次結果是 "
+                f"{info.get('last_conclusion') or '從來沒跑過'}。這代表你目前的改動"
+                "可能沒被真的驗證過，正式環境上跑的也可能不是你以為的最新版本。"
+            ),
+            hint="跟我說一聲，我去看 Actions 的執行紀錄，找出卡在哪一步再修。",
         )
     return CheckResult(id="github", title="GitHub", ok=True,
                        detail=f"{info['repo']}，Actions 最近一次成功。")
@@ -3852,20 +3879,34 @@ def probe(facts):
     endpoints = facts.get("endpoints", {})
     env = facts.get("prod_env", {})
     problems = []
+    hints = []
     for name in ("staging", "prod"):
         status = endpoints.get(name)
         if status != 200:
             problems.append(f"{name} 回 {status or '連不上'}，不是 200。")
     if env.get("DJANGO_DEBUG") == "1":
-        problems.append("正式環境的 DEBUG 是開的。")
+        problems.append(
+            "正式環境的 DEBUG 是開的。正式環境開著它，出錯時會把程式碼細節顯示給"
+            "所有看到這個網站的人看，等於把系統內部攤開給外人看。"
+        )
+        hints.append("跟我說一聲，我幫你把正式環境的 DJANGO_DEBUG 關掉。")
     key = env.get("DJANGO_SECRET_KEY", "")
     if not key or key == TEMPLATE_DEFAULT_KEY or key.startswith("django-insecure-"):
-        problems.append("正式環境的 SECRET_KEY 還是預設值或空的。")
+        problems.append(
+            "正式環境的 SECRET_KEY 還是預設值或空的。這把鑰匙用來簽登入狀態，沒有"
+            "它、或用著公開的預設值，任何人都能偽造登入，直接假冒成任何使用者。"
+        )
+        hints.append("跟我說一聲，我幫你產生一組新的 SECRET_KEY 並設定到正式環境。")
     if "*" in [h.strip() for h in env.get("DJANGO_ALLOWED_HOSTS", "").split(",")]:
-        problems.append("正式環境的 ALLOWED_HOSTS 含有萬用字元。")
+        problems.append(
+            "正式環境的 ALLOWED_HOSTS 含有萬用字元，等於接受任何網址轉過來的請求，"
+            "攻擊者可以偽造成你的網站，把使用者導去別的地方騙資料。"
+        )
+        hints.append("跟我說一聲，我幫你把正式環境的 ALLOWED_HOSTS 換成實際的網域名稱。")
     return CheckResult(
         id="service", title="兩個環境", ok=not problems,
         detail="；".join(problems) or "staging 與 prod 都回 200，正式環境設定安全。",
+        hint="；".join(hints),
     )
 ```
 
@@ -3885,20 +3926,34 @@ def probe(facts):
     info = facts.get("backup", {})
     marker = info.get("marker")
     problems = []
+    hints = []
     if not marker:
         problems.append("還沒有寫過測試資料，沒辦法確認資料會不會不見。")
     elif not info.get("survived_redeploy"):
         problems.append("寫進去的資料在重新部署之後不見了，代表 volume 沒掛好。")
     if not info.get("release_tag"):
-        problems.append("備份還沒成功跑過一次。")
+        problems.append(
+            "備份還沒成功跑過一次。如果現在資料庫壞掉或被誤刪，你沒有任何備份可以"
+            "救回資料，東西會直接永久消失。"
+        )
+        hints.append("跟我說一聲，我來手動觸發一次備份，確認它能跑成功。")
     elif not info.get("snapshot_opens"):
-        problems.append("最新的備份檔打不開。")
+        problems.append(
+            "最新一次的備份檔打不開。代表就算你以為有備份，那份其實是壞的——真的"
+            "出事故要救資料時，這份備份等於不存在。"
+        )
+        hints.append("跟我說一聲，我來檢查備份檔案壞在哪裡，並重新跑一次。")
     elif marker and marker not in info.get("snapshot_rows", []):
-        problems.append("備份檔打得開，但裡面沒有那筆測試資料。")
+        problems.append(
+            "備份檔打得開，但裡面沒有那筆測試資料，代表備份的內容不完整或抓的時間"
+            "點不對——真的需要還原時，可能會發現該有的資料早就漏掉了。"
+        )
+        hints.append("跟我說一聲，我來檢查備份流程抓資料的時間點，找出漏掉的原因。")
     return CheckResult(
         id="data", title="資料安全", ok=not problems,
         detail="；".join(problems)
         or f"資料撐過重新部署，備份 {info['release_tag']} 打得開而且找得到那筆資料。",
+        hint="；".join(hints),
     )
 ```
 
