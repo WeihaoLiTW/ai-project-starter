@@ -1035,11 +1035,26 @@ def plugin_root():
 
     CLAUDE_PLUGIN_ROOT is documented for Claude Code and Cowork states it
     shares the same hooks schema, but Cowork does not document how the
-    variable maps inside its VM. Fall back to this file's own location so a
-    missing variable degrades instead of breaking.
+    variable maps inside its VM. If the variable is set and names an existing
+    directory, return it silently. Otherwise write one line to stderr and
+    return the fallback (this file's parent directory).
+
+    The fallback must be audible. A silent one would make a plugin that
+    cannot find its own files look like a working plugin.
     """
     env = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    return Path(env) if env else Path(__file__).resolve().parent.parent
+    fallback = Path(__file__).resolve().parent.parent
+
+    if env is None:
+        sys.stderr.write("CLAUDE_PLUGIN_ROOT is not set; using fallback\n")
+        return fallback
+
+    path = Path(env)
+    if path.is_dir():
+        return path
+
+    sys.stderr.write(f"CLAUDE_PLUGIN_ROOT={env} does not exist; using fallback\n")
+    return fallback
 ```
 
 - [ ] **Step 3: 寫 canary hook**
@@ -1063,8 +1078,13 @@ payload = read_payload()
 event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 line = f"{datetime.datetime.now().isoformat()} {event} keys={sorted(payload)}\n"
 
-with (Path.cwd() / "hook-canary.log").open("a", encoding="utf-8") as handle:
-    handle.write(line)
+try:
+    with (Path.cwd() / "hook-canary.log").open("a", encoding="utf-8") as handle:
+        handle.write(line)
+except Exception as exc:
+    # Registered on PreToolUse for Write|Edit. An unhandled failure here would
+    # end every single file edit in the session with a traceback.
+    sys.stderr.write(f"Failed to write hook-canary.log: {exc}\n")
 
 emit({})
 ```
