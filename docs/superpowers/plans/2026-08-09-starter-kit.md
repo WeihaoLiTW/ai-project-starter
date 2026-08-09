@@ -996,9 +996,20 @@ from pathlib import Path
 
 
 def read_payload():
-    """Read the hook payload from stdin. Returns {} when there is nothing."""
+    """Read the hook payload from stdin.
+
+    Returns {} when stdin is empty or whitespace-only.
+    Returns the parsed object for valid JSON.
+    For malformed JSON, writes one line to stderr and returns {}, never raising.
+    """
     raw = sys.stdin.read().strip()
-    return json.loads(raw) if raw else {}
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(f"Failed to parse hook payload: {exc}\n")
+        return {}
 
 
 def emit(obj):
