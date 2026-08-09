@@ -50,8 +50,8 @@ Cowork 官方文件在 hooks schema、marketplace schema、plugin.json 欄位三
 | 4 staging/prod 皆 200 | B8 兩個環境各自活著 | `test_template_project.py` | 1 | 設定隔離自動；連線需人工 |
 | 5 寫入 → 重新部署 → 資料仍在 | B5 部署後資料不會消失 | `test_template_project.py` | 1 | 掛載結構自動；重新部署需人工 |
 | 6 prod DEBUG/SECRET_KEY/ALLOWED_HOSTS | B7 正式環境不帶開發設定上線 | `test_prod_settings.py` | 4 | 自動 |
-| 7 備份 Release 中的 SQLite 可開且含該筆 | B6 備份拿得回來 | `test_backup.py` | 4 | 快照與清理自動；上傳需人工 |
-| 8 任意 commit checkout 後 pytest 綠 | B2 紅的時候不 commit、B3 歷史任一點都能跑 | `test_safety_net.py`（5）、`test_health_check.py`（2） | 7 | 自動 |
+| 7 備份 Release 中的 SQLite 可開且含該筆 | B6 備份拿得回來 | `test_backup.py` | 5 | 快照與清理自動；取出與上傳需人工 |
+| 8 任意 commit checkout 後 pytest 綠 | B2 紅的時候不 commit、B3 歷史任一點都能跑 | `test_safety_net.py`（5）、`test_health_check.py`（3） | 8 | 自動 |
 | 9 禁問清單命中 0、業務問題 ≥ 1 | B12 模糊需求換來業務問題 | `test_question_audit.py` | 4 | 比對器自動；輸入需人工 |
 | 10 報告名詞 100% 有定義 | B13 測試報告上的詞都查得到 | `test_report_glossary.py` | 4 | 自動 |
 | 11 清空記憶後不重問已記錄決策 | B14 換一個 session 也接得上 | — | 0 | **人工** |
@@ -60,7 +60,7 @@ Cowork 官方文件在 hooks schema、marketplace schema、plugin.json 欄位三
 | （保命繩，非編號條件） | B4 密鑰擋在 commit 之外 | `test_safety_net.py` | 3 | 自動 |
 | （測試設計，非編號條件） | B9 CI 跑的是 local 的超集 | `test_ci_superset.py` | 3 | 自動 |
 
-合計 40 個測試函式；其中密鑰那個是參數化的，實際跑出 45 個案例。
+合計 42 個測試函式；其中密鑰那個是參數化的，實際跑出 47 個案例。
 
 **Gate A 覆蓋**：13 條成功條件，每條都對到至少一個行為分段；11 條有自動測試，另 2 條（#3、#11）純人工，已列在人工清單。
 **Gate B 溯源**：每組測試底下都附一行「期望值來源」，指出數字或字串取自 spec 哪一段、或哪一份實測紀錄。
@@ -157,7 +157,9 @@ plugins/starter-kit/
     install-wizard/
       SKILL.md
       template/                       # 複製到使用者工作資料夾的 Django 樣板
-      backup-repo/backup.yml          # 放進私有備份庫的 workflow
+      backup-repo/                    # 放進私有備份庫的東西
+        backup.yml
+        README.md
     health-check/SKILL.md
     think-first/
       SKILL.md
@@ -420,6 +422,24 @@ def test_history_probe_names_the_commit_that_fails(repo):
 
     assert result.ok is False
     assert bad[:7] in result.detail
+
+
+def test_checking_history_leaves_the_working_folder_exactly_as_it_was(repo):
+    """抽驗歷史版本的時候，使用者正在改的東西一個字都不會變。"""
+    from conftest import git
+    from checks.probes.history import probe
+
+    (repo / "tests" / "test_wip.py").write_text(
+        "def test_wip():\n    \"\"\"還在寫。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+    before_branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip()
+    before_status = git("status", "--porcelain", cwd=repo)
+
+    probe({"repo": str(repo), "sample": 99})
+
+    assert git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo).strip() == before_branch
+    assert git("status", "--porcelain", cwd=repo) == before_status
+    assert (repo / "tests" / "test_wip.py").exists()
 ```
 
 > **期望值來源**：spec 成功定義 #8「git 歷史上任意一個 commit checkout 出來，`pytest` 皆為綠」。`sample` 讓健檢抽驗、讓測試全驗，是為了滿足 spec 驗證方式的「全部條件可在單一 session 內完成」。
@@ -603,16 +623,27 @@ def test_the_snapshot_opens_and_contains_what_was_written(tmp_path):
 def test_a_corrupt_snapshot_is_reported_not_returned(tmp_path):
     """快照壞掉的時候會報錯，不會交出一個看起來正常的壞備份。"""
     sys.path.insert(0, str(TEMPLATE / "scripts"))
-    from backup_snapshot import SnapshotCorrupt, snapshot
+    from backup_snapshot import SnapshotCorrupt, verify
 
-    src = tmp_path / "db.sqlite3"
-    make_db(src, "x")
-    out = tmp_path / "backup.sqlite3"
+    broken = tmp_path / "backup.sqlite3"
+    broken.write_bytes(b"not a database")
 
     import pytest
     with pytest.raises(SnapshotCorrupt):
-        snapshot(src, out, _corrupt_for_test=True)
-    assert not out.exists()
+        verify(broken)
+    assert not broken.exists()
+
+
+def test_a_healthy_snapshot_passes_verification(tmp_path):
+    """完整的快照通過檢查，而且檔案留著。"""
+    sys.path.insert(0, str(TEMPLATE / "scripts"))
+    from backup_snapshot import verify
+
+    good = tmp_path / "backup.sqlite3"
+    make_db(good, "x")
+
+    assert verify(good) == good
+    assert good.exists()
 
 
 def test_an_existing_target_does_not_silently_overwrite(tmp_path):
@@ -886,7 +917,7 @@ Gate B 的誠實逃生口。**這幾條是唯一需要人工驗的清單，本�
 | 3 GitHub repo + Actions 成功 | `manual / not unit-testable because` 需要一個真的 GitHub 帳號與一次真的 Actions 執行 | 安裝走完後開 repo 的 Actions 頁，確認最新一次結論為 success |
 | 4 兩環境皆 200 | `manual / not unit-testable because` 需要真的部署到 Zeabur | 健檢第 8 項對兩個網址各發一次請求 |
 | 5 重新部署後資料仍在 | `manual / not unit-testable because` 需要真的觸發一次重新部署 | 健檢第 9 項：寫入 marker → 重新部署 → 再讀一次 |
-| 7 備份 Release 裡的檔案 | `manual / not unit-testable because` 上傳到 GitHub Release 需要真的帳號 | 健檢第 9 項下載最新 Release 的檔案、開起來、找 marker |
+| 7 備份 Release 裡的檔案 | `manual / not unit-testable because` 進容器取快照需要真的 Zeabur 服務，上傳需要真的 GitHub 帳號 | 手動觸發一次備份 workflow，然後健檢第 9 項下載最新 Release 的檔案、開起來、找 marker |
 | 9 禁問清單命中 0 | `manual / not unit-testable because` 需要 Claude 真的產生問題，非決定性 | 用預先寫好的數組模糊需求各開一次對話，把 Claude 的問題貼進比對器 |
 | 11 清空記憶後不重問 | `manual / not unit-testable because` 需要清空 Cowork 的 project memory 並開新 session | 清空後開新 session，數 Claude 重問了幾個已記錄的決策 |
 | 12 走查記錄動用文件外知識 = 0 | `manual / not unit-testable because` 這條測的是文件，不是程式 | 只照文件做，每動用一次文件外知識記一筆，不當場修，走完再一起修並重跑 |
@@ -2097,18 +2128,24 @@ git commit -m "feat: run one test path in CI and prove it is the local one"
 
 **排程放在私有備份庫，不放公開的程式碼庫。** `GITHUB_TOKEN` 只能操作自己所在的 repo，跨 repo 上傳 Release 需要一組 PAT——而把「能寫入私有備份庫」的憑證放進公開 repo，等於把備份的門鑰匙掛在門外。反過來讓排程跑在私有庫、由它主動去抓，用預設 token 就夠，公開庫一把鑰匙都不用放。私有庫每月 2000 分鐘免費，每天跑一次用不到 30 分鐘。
 
-快照怎麼離開容器：**由正式環境提供一個帶 token 的下載端點**。資料庫在容器裡的 volume 上，Actions 碰不到；`zeabur service exec` 這條路要靠 CLI 的 `--env-id`，而 CLI 沒有任何指令列得出環境（探針實測），且整段是 shell 拼裝、測不動。端點的行為（沒 token 就 404、有 token 給得出一致性快照）反而是可以直接測的。
+快照怎麼離開容器：**用 Zeabur CLI 進容器執行，把結果從 stdout 帶出來**。資料庫在容器裡的 volume 上，Actions 直接碰不到。這條路不需要在對外的網站上開任何額外的路由——公開的程式碼裡不會多出一個「這裡可以下載整個資料庫」的入口。
+
+代價要寫清楚，實作時會撞到：
+
+- **CLI 沒有任何指令列得出環境 ID**（探針實測）。所以服務 ID 與環境 ID 由安裝嚮導從網址列抓下來，存成私有備份庫的變數。
+- **容器裡沒有 `sqlite3` 指令**，base image 是 `python:3.10-slim`。所以進容器跑的是 `python -c`，用內建的 `sqlite3` 模組。
+- **stdout 只能帶文字**，所以快照要 base64 編碼再傳出來。傳輸壞掉不會當場報錯，所以解碼之後一定要跑一次完整性檢查——這正是 `verify()` 被拆成獨立函式的第二個用途。
+- Actions 的 runner 沒有網路限制，所以 `zeabur.com` 在這裡一定連得到。egress 白名單那個問題只影響 Cowork 裡面，不影響這條路。
 
 **Files:**
 - Create: `plugins/starter-kit/skills/install-wizard/template/scripts/backup_snapshot.py`
 - Create: `plugins/starter-kit/skills/install-wizard/backup-repo/backup.yml`
-- Modify: `plugins/starter-kit/skills/install-wizard/template/core/views.py`
-- Modify: `plugins/starter-kit/skills/install-wizard/template/core/urls.py`
+- Create: `plugins/starter-kit/skills/install-wizard/backup-repo/README.md`
 - Test: `tests/test_backup.py`
 
 **Interfaces:**
 - Consumes: Task 2 的 `core/models.Note` 與 `project/settings/base.DATA_DIR`
-- Produces: `scripts/backup_snapshot.py` 提供 `snapshot(db_path, out_path, _corrupt_for_test=False) -> Path`（目標檔已存在丟 `FileExistsError`，完整性檢查沒過丟 `SnapshotCorrupt` 並刪掉半成品）與 `expired_tags(releases, now, keep_days) -> list[str]`；`core.views.backup` 在 `BACKUP_TOKEN` 沒設或不符時一律回 404
+- Produces: `scripts/backup_snapshot.py` 提供 `verify(path) -> Path`（沒過丟 `SnapshotCorrupt` 並刪檔）、`snapshot(db_path, out_path) -> Path`（目標檔已存在丟 `FileExistsError`）、`expired_tags(releases, now, keep_days) -> list[str]`，以及 `main()` 支援 `expired` 與 `verify` 兩個子指令
 
 - [ ] **Step 1: 先寫會失敗的測試**
 
@@ -2140,7 +2177,27 @@ class SnapshotCorrupt(RuntimeError):
     """The snapshot did not pass its integrity check and was discarded."""
 
 
-def snapshot(db_path, out_path, _corrupt_for_test=False):
+def verify(path):
+    """Return `path` if it is a healthy database; delete it and raise if not.
+
+    Kept separate from `snapshot` so the corrupt path is reachable from a
+    test without a test-only branch living in production code. The backup
+    workflow also calls it on its own, after transferring the file.
+    """
+    path = Path(path)
+    try:
+        result = sqlite3.connect(path).execute("PRAGMA integrity_check").fetchone()
+        healthy = bool(result) and result[0] == "ok"
+    except sqlite3.DatabaseError:
+        healthy = False
+
+    if not healthy:
+        path.unlink(missing_ok=True)
+        raise SnapshotCorrupt(f"{path} 沒通過完整性檢查，已刪除。")
+    return path
+
+
+def snapshot(db_path, out_path):
     """Write a verified snapshot of `db_path` to `out_path`."""
     out_path = Path(out_path)
     if out_path.exists() and out_path.stat().st_size > 0:
@@ -2152,19 +2209,7 @@ def snapshot(db_path, out_path, _corrupt_for_test=False):
     finally:
         source.close()
 
-    if _corrupt_for_test:
-        out_path.write_bytes(b"not a database")
-
-    try:
-        result = sqlite3.connect(out_path).execute("PRAGMA integrity_check").fetchone()
-        healthy = result and result[0] == "ok"
-    except sqlite3.DatabaseError:
-        healthy = False
-
-    if not healthy:
-        out_path.unlink(missing_ok=True)
-        raise SnapshotCorrupt(f"{out_path} 沒通過完整性檢查，已刪除。")
-    return out_path
+    return verify(out_path)
 
 
 def expired_tags(releases, now, keep_days):
@@ -2183,12 +2228,17 @@ def expired_tags(releases, now, keep_days):
 def main():
     import json
 
-    if sys.argv[1] == "expired":
+    command = sys.argv[1]
+    if command == "expired":
         releases = json.loads(Path(sys.argv[2]).read_text("utf-8"))
         for tag in expired_tags(releases, datetime.now(timezone.utc), keep_days=90):
             print(tag)
         return 0
-    snapshot(sys.argv[1], sys.argv[2])
+    if command == "verify":
+        verify(sys.argv[2])
+        print("備份檔完整。")
+        return 0
+    snapshot(command, sys.argv[2])
     return 0
 
 
@@ -2201,45 +2251,32 @@ if __name__ == "__main__":
 Run: `python3 -m pytest tests/test_backup.py -v`
 Expected: PASS，4 個測試全過。
 
-- [ ] **Step 5: 加上下載端點**
+- [ ] **Step 5: 寫私有備份庫的說明**
 
-在 `core/views.py` 追加：
+`plugins/starter-kit/skills/install-wizard/backup-repo/README.md`：
 
-```python
-import hmac
-import os
-import tempfile
-from pathlib import Path
+```markdown
+# 備份
 
-from django.http import FileResponse, Http404
+這個 repo 是私有的，因為裡面有使用者帳號和密碼。
 
+每天自動從正式環境抓一份資料庫快照，存成這個 repo 的 Release，保留三個月。
 
-def backup(request):
-    """Hand out a consistent snapshot to whoever holds the backup token.
+## 要設定的東西
 
-    Returns 404 rather than 403 for a bad token so the endpoint does not
-    announce itself. Absent BACKUP_TOKEN, the endpoint does not exist at all,
-    which is how staging ends up without one.
-    """
-    expected = os.environ.get("BACKUP_TOKEN", "")
-    supplied = request.headers.get("X-Backup-Token", "")
-    if not expected or not hmac.compare_digest(expected, supplied):
-        raise Http404
+| 名稱 | 種類 | 內容 |
+|---|---|---|
+| `ZEABUR_API_TOKEN` | secret | Zeabur 的 API token |
+| `ZEABUR_SERVICE_ID` | variable | 正式環境那個服務的 ID |
+| `ZEABUR_ENV_ID` | variable | 正式環境的環境 ID |
+| `CODE_REPO` | variable | 程式碼 repo，格式 `帳號/repo 名稱` |
 
-    from django.conf import settings
+服務 ID 與環境 ID 要從 Zeabur 網站的網址列抓 —— CLI 沒有任何指令列得出來。
+安裝嚮導會帶你做這一步。
 
-    sys.path.insert(0, str(Path(settings.BASE_DIR) / "scripts"))
-    from backup_snapshot import snapshot
+## 要還原的時候
 
-    out = Path(tempfile.mkdtemp()) / "snapshot.sqlite3"
-    snapshot(settings.DATABASES["default"]["NAME"], out)
-    return FileResponse(out.open("rb"), as_attachment=True, filename="snapshot.sqlite3")
-```
-
-在 `core/urls.py` 的 `urlpatterns` 追加：
-
-```python
-    path("internal/backup/", views.backup, name="backup"),
+到 Releases 下載那天的 `.sqlite3` 檔，交給 Claude，跟它說你要還原到哪一天。
 ```
 
 - [ ] **Step 6: 寫私有備份庫的 workflow**
@@ -2264,19 +2301,45 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch a consistent snapshot from production
-        env:
-          PROD_URL: ${{ secrets.PROD_URL }}
-          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+      - name: Fetch the backup script from the code repository
         run: |
-          curl --fail --silent --show-error \
-            -H "X-Backup-Token: ${BACKUP_TOKEN}" \
-            -o snapshot.sqlite3 \
-            "${PROD_URL}/internal/backup/"
+          curl -sSfL -o backup_snapshot.py \
+            "https://raw.githubusercontent.com/${{ vars.CODE_REPO }}/main/scripts/backup_snapshot.py"
 
-      - name: Refuse to keep a snapshot that does not open
+      - name: Install the Zeabur CLI
+        run: npm install -g zeabur@0.21.0
+
+      # The database sits on a volume inside the container, so the snapshot is
+      # taken in there and carried out through stdout. The image is
+      # python:3.10-slim, which has no sqlite3 command — hence python -c.
+      - name: Take a consistent snapshot inside the container
+        env:
+          ZEABUR_API_TOKEN: ${{ secrets.ZEABUR_API_TOKEN }}
         run: |
-          test "$(sqlite3 snapshot.sqlite3 'PRAGMA integrity_check;')" = "ok"
+          zeabur service exec \
+            --service-id "${{ vars.ZEABUR_SERVICE_ID }}" \
+            --env-id "${{ vars.ZEABUR_ENV_ID }}" \
+            -- python -c '
+          import base64, os, sqlite3, sys, tempfile
+          src = os.path.join(os.environ.get("DATA_DIR", "/data"), "db.sqlite3")
+          out = os.path.join(tempfile.mkdtemp(), "snap.sqlite3")
+          conn = sqlite3.connect(src)
+          conn.execute("VACUUM INTO ?", (out,))
+          conn.close()
+          with open(out, "rb") as handle:
+              sys.stdout.write(base64.b64encode(handle.read()).decode())
+          os.remove(out)
+          ' > snapshot.b64
+          python3 -c "
+          import base64, pathlib
+          data = pathlib.Path('snapshot.b64').read_text().strip()
+          pathlib.Path('snapshot.sqlite3').write_bytes(base64.b64decode(data))
+          "
+
+      # Transport does not report its own failures, so the file is checked
+      # after it arrives, not only where it was made.
+      - name: Refuse to keep a snapshot that does not open
+        run: python3 backup_snapshot.py verify snapshot.sqlite3
 
       - name: Publish it as a release
         env:
@@ -2294,8 +2357,6 @@ jobs:
         run: |
           gh release list --repo "${{ github.repository }}" --limit 500 \
             --json tagName,createdAt > releases.json
-          curl -sL -o backup_snapshot.py \
-            "https://raw.githubusercontent.com/${{ vars.CODE_REPO }}/main/scripts/backup_snapshot.py"
           python3 backup_snapshot.py expired releases.json | while read -r tag; do
             gh release delete "$tag" --repo "${{ github.repository }}" --cleanup-tag --yes
           done
@@ -3032,9 +3093,17 @@ def probe(facts):
 `history.py`：
 
 ```python
-"""5 git 歷史抽驗：任一個 commit checkout 出來都是綠的。"""
+"""5 git 歷史抽驗：任一個 commit checkout 出來都是綠的。
+
+Each commit is checked out into a throwaway worktree under a temporary
+directory. The user's working folder is never touched — checking it out in
+place would fail on a dirty tree, or strand the repository on a detached
+HEAD with their work apparently gone.
+"""
 
 import random
+import shutil
+import tempfile
 from pathlib import Path
 
 from .._shim import run
@@ -3048,21 +3117,34 @@ def probe(facts):
     if code != 0:
         return CheckResult(id="history", title="歷史版本", ok=False,
                            detail="讀不到 git 歷史。")
+
     commits = out.split()
     chosen = commits if len(commits) <= sample else random.sample(commits, sample)
-    head, _, _ = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     broken = []
+    scratch = Path(tempfile.mkdtemp(prefix="health-history-"))
     try:
         for commit in chosen:
-            run(["git", "checkout", "-q", commit], cwd=root)
-            runner = root / "scripts" / "run_tests.sh"
-            if not runner.exists():
-                continue
-            code, _, _ = run(["sh", str(runner)], cwd=root, timeout=300)
+            checkout = scratch / commit[:7]
+            code, _, err = run(
+                ["git", "worktree", "add", "--detach", "-q", str(checkout), commit],
+                cwd=root,
+            )
             if code != 0:
-                broken.append(commit[:7])
+                broken.append(f"{commit[:7]}（取不出來：{err.strip()[:80]}）")
+                continue
+            try:
+                runner = checkout / "scripts" / "run_tests.sh"
+                if not runner.exists():
+                    continue
+                code, _, _ = run(["sh", str(runner)], cwd=checkout, timeout=300)
+                if code != 0:
+                    broken.append(commit[:7])
+            finally:
+                run(["git", "worktree", "remove", "--force", str(checkout)], cwd=root)
     finally:
-        run(["git", "checkout", "-q", "-"], cwd=root)
+        shutil.rmtree(scratch, ignore_errors=True)
+        run(["git", "worktree", "prune"], cwd=root)
+
     return CheckResult(
         id="history", title="歷史版本",
         ok=not broken,
@@ -3309,12 +3391,14 @@ Zeabur 的錯誤訊息說不清楚原因，所以順序錯了他會卡死在一�
    ZeaburOS 沒裝好就建專案，只會得到一個沒有原因的錯誤。
 6. **建立專案** —— 把這個 skill 目錄底下 `template/` 的東西複製到他的工作資料夾。
 7. **產生密鑰** —— 用 `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
-   各產一組 `DJANGO_SECRET_KEY` 與 `BACKUP_TOKEN`，設進 Zeabur 的環境變數。
-   **不要寫進任何檔案。**
+   產一組 `DJANGO_SECRET_KEY`，設進 Zeabur 的環境變數。**不要寫進任何檔案。**
 8. **接上部署** —— `develop` 分支接 staging，`main` 分支接 prod。
-9. **備份** —— 把 `backup-repo/backup.yml` 放進私有 repo 的 `.github/workflows/`，
-   設定 `PROD_URL` 與 `BACKUP_TOKEN` 兩個 secret，以及 `CODE_REPO` 這個變數。
-10. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
+9. **抄下兩組 ID** —— 開啟正式環境那個服務的頁面，從網址列抄下服務 ID 與
+   環境 ID。**CLI 沒有任何指令列得出環境 ID**，只能從網址抓，所以這一步不能跳。
+10. **備份** —— 把 `backup-repo/backup.yml` 放進私有 repo 的 `.github/workflows/`，
+    設定 `ZEABUR_API_TOKEN` 這個 secret，以及 `ZEABUR_SERVICE_ID`、`ZEABUR_ENV_ID`、
+    `CODE_REPO` 三個變數。`backup-repo/README.md` 也一起放進去。
+11. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
 
 ## Zeabur 怎麼操作
 
@@ -3671,7 +3755,7 @@ git commit -m "feat: add the deploy flow that stops before going public"
 - [ ] **Step 4: 跑一次完整測試**
 
 Run: `python3 -m pytest tests/ -v`
-Expected: PASS，40 個測試函式、45 個案例全綠。
+Expected: PASS，42 個測試函式、47 個案例全綠。
 
 - [ ] **Step 5: Commit**
 
