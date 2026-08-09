@@ -59,8 +59,9 @@ Cowork 官方文件在 hooks schema、marketplace schema、plugin.json 欄位三
 | 13 健檢指名 Zeabur 路徑並實測一次 | B10 健檢說得出走哪條路 | `test_health_check.py` | 5 | 判定邏輯自動；實際操作需人工 |
 | （保命繩，非編號條件） | B4 密鑰擋在 commit 之外 | `test_safety_net.py` | 3 | 自動 |
 | （測試設計，非編號條件） | B9 CI 跑的是 local 的超集 | `test_ci_superset.py` | 3 | 自動 |
+| （Global Constraint，非編號條件） | B17 hook 不會中斷使用者的操作 | `test_hook_payload.py` | 7 | 自動 |
 
-合計 42 個測試函式；其中密鑰那個是參數化的，實際跑出 47 個案例。
+合計 49 個測試函式；其中密鑰那個是參數化的，實際跑出 54 個案例。
 
 **Gate A 覆蓋**：13 條成功條件，每條都對到至少一個行為分段；11 條有自動測試，另 2 條（#3、#11）純人工，已列在人工清單。
 **Gate B 溯源**：每組測試底下都附一行「期望值來源」，指出數字或字串取自 spec 哪一段、或哪一份實測紀錄。
@@ -116,6 +117,11 @@ CI 執行的測試指令與本機是同一個入口，多出來的部分只能�
 
 **B16 GitHub 那邊真的有東西**（條件 3）
 安裝完成後 GitHub 有對應 repo，且 Actions 至少一次結論為 success。
+
+**B17 hook 不會中斷使用者的操作**（Global Constraint）
+不管 stdin 送進來什麼——空的、壞掉的 JSON、不是 UTF-8 的位元組、合法但不是物件的
+JSON——hook 都要正常結束，寫 stderr 可以，拋例外不行。密鑰擋門掛在 `Write|Edit` 上，
+它一崩潰，使用者這一次的檔案編輯就跟著死。
 
 ## 檔案結構
 
@@ -938,6 +944,7 @@ Gate B 的誠實逃生口。**這幾條是唯一需要人工驗的清單，本�
 - Create: `plugins/starter-kit/scripts/canary.py`
 - Create: `pytest.ini`
 - Test: `tests/conftest.py`
+- Test: `tests/test_hook_payload.py`
 
 **Interfaces:**
 - Consumes: 無，這是第一個 task
@@ -995,21 +1002,53 @@ import sys
 from pathlib import Path
 
 
+_JSON_TYPE_NAMES = {
+    bool: "boolean",
+    int: "number",
+    float: "number",
+    str: "string",
+    list: "array",
+    type(None): "null",
+}
+
+
 def read_payload():
     """Read the hook payload from stdin.
 
-    Returns {} when stdin is empty or whitespace-only.
-    Returns the parsed object for valid JSON.
-    For malformed JSON, writes one line to stderr and returns {}, never raising.
+    Always returns a dict. This is a guarantee, not a convention: every
+    caller downstream can treat the result as a dict without checking.
+
+    - Empty or whitespace-only stdin returns {} silently.
+    - Malformed JSON writes one line to stderr and returns {}.
+    - Valid JSON that is not a JSON object (a number, string, boolean,
+      null, or array) writes one line to stderr naming what it got, and
+      returns {}.
+    - Bytes on stdin that are not valid UTF-8 are decoded with
+      errors="replace" instead of raising.
+
+    Never raises, for any byte sequence on stdin.
     """
-    raw = sys.stdin.read().strip()
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is not None:
+        raw = buffer.read().decode("utf-8", errors="replace").strip()
+    else:
+        raw = sys.stdin.read().strip()
+
     if not raw:
         return {}
+
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         sys.stderr.write(f"Failed to parse hook payload: {exc}\n")
         return {}
+
+    if not isinstance(parsed, dict):
+        type_name = _JSON_TYPE_NAMES.get(type(parsed), type(parsed).__name__)
+        sys.stderr.write(f"Hook payload must be a JSON object; got {type_name}\n")
+        return {}
+
+    return parsed
 
 
 def emit(obj):
@@ -1028,7 +1067,7 @@ def run(cmd, cwd, timeout=120):
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timed out after {timeout}s"
-    except FileNotFoundError as exc:
+    except OSError as exc:
         return 127, "", str(exc)
 
 
@@ -1153,15 +1192,36 @@ addopts = -q
 
 `tests/conftest.py`：內容照「Behavior Tests」段落開頭那份共用 fixture 逐字寫入。
 
-- [ ] **Step 5: 確認測試骨架跑得起來**
+- [ ] **Step 5: 鎖住「hook 不會中斷使用者操作」這條**
 
-Run: `python3 -m pytest tests/ -q`
-Expected: `no tests ran`，且沒有 import 錯誤。
+`read_payload()` 是每個 hook 的第一個動作，而密鑰擋門掛在 `Write|Edit` 上。這條路徑上
+任何一個未處理的例外，都會讓使用者的檔案編輯當場死掉。這件事靠肉眼檢查守不住 ——
+實際執行時連續三輪 review 才把例外表面找乾淨，所以它需要測試。
 
-- [ ] **Step 6: Commit**
+`tests/test_hook_payload.py` 走真的介面（`subprocess` 餵原始位元組進 stdin，斷言退出碼），
+涵蓋七種輸入：
+
+| 送進去的 | 要看到的 |
+|---|---|
+| 空的 | `{}`，沒有 stderr |
+| 合法的 JSON 物件 | 原樣回來 |
+| 壞掉的 JSON | `{}`、一行 stderr、退出碼 0 |
+| 不是 UTF-8 的位元組 | `{}`、退出碼 0 |
+| `42` | `{}`、退出碼 0 |
+| `[1,2]` | `{}`、退出碼 0 |
+| 上面每一種餵給 canary | 退出碼 0 |
+
+先寫測試、看它紅、再讓它綠。
+
+- [ ] **Step 6: 確認測試跑得起來**
+
+Run: `python3 -m pytest tests/ -v`
+Expected: PASS，7 個測試全綠，輸出乾淨無警告。
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add .claude-plugin plugins/starter-kit pytest.ini tests/conftest.py
+git add .claude-plugin plugins/starter-kit pytest.ini tests/
 git commit -m "feat: add plugin skeleton and a canary that proves hooks fire"
 ```
 
@@ -3786,7 +3846,7 @@ git commit -m "feat: add the deploy flow that stops before going public"
 - [ ] **Step 4: 跑一次完整測試**
 
 Run: `python3 -m pytest tests/ -v`
-Expected: PASS，42 個測試函式、47 個案例全綠。
+Expected: PASS，49 個測試函式、54 個案例全綠。
 
 - [ ] **Step 5: Commit**
 
