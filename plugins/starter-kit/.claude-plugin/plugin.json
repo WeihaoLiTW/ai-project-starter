@@ -1,0 +1,6 @@
+{
+  "name": "starter-kit",
+  "version": "0.1.0",
+  "description": "給非技術者的 Claude 環境包：行為設定、保命繩、Django 樣板與部署流程。",
+  "license": "MIT"
+}

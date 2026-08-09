@@ -1,0 +1,16 @@
+{
+  "name": "ai-project-starter",
+  "owner": {
+    "name": "ai-project-starter"
+  },
+  "description": "給非技術者的 Claude 環境包：行為設定、保命繩、Django 樣板與部署流程。",
+  "plugins": [
+    {
+      "name": "starter-kit",
+      "source": "./plugins/starter-kit",
+      "description": "把一段話貼進 Claude，帶你裝完環境、開好專案、上線兩個環境。",
+      "category": "productivity",
+      "keywords": ["onboarding", "django", "non-technical"]
+    }
+  ]
+}
