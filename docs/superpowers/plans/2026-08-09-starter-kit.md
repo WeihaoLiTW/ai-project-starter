@@ -926,7 +926,10 @@ from checks.probes.zeabur import probe
 
 def test_the_cli_is_named_when_it_is_reachable():
     """CLI 這條路通的時候，報告指名走 CLI。"""
-    result = probe({"zeabur": {"cli": True, "mcp": True, "browser": True}})
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": True, "mcp": True, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("CLI")
@@ -934,7 +937,10 @@ def test_the_cli_is_named_when_it_is_reachable():
 
 def test_mcp_is_named_when_the_cli_is_blocked():
     """CLI 不通、MCP 通，報告指名走 MCP。"""
-    result = probe({"zeabur": {"cli": False, "mcp": True, "browser": True}})
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": False, "mcp": True, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("MCP")
@@ -942,7 +948,10 @@ def test_mcp_is_named_when_the_cli_is_blocked():
 
 def test_the_browser_is_named_when_it_is_the_only_one_left():
     """只剩瀏覽器可用，報告指名走瀏覽器。"""
-    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": True}})
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("瀏覽器")
@@ -950,6 +959,8 @@ def test_the_browser_is_named_when_it_is_the_only_one_left():
 
 def test_all_three_blocked_turns_the_item_red_with_a_reason():
     """三條路都不通，這一項紅燈，而且說得出三條各自為什麼不通。"""
+    from checks.probes.zeabur import probe
+
     result = probe({"zeabur": {"cli": False, "mcp": False, "browser": False}})
 
     assert result.ok is False
@@ -959,10 +970,25 @@ def test_all_three_blocked_turns_the_item_red_with_a_reason():
 
 def test_a_named_path_without_a_proven_operation_is_red():
     """指名了一條路，但沒有實際跑成功一次操作，這一項不算過。"""
+    from checks.probes.zeabur import probe
+
     result = probe({"zeabur": {"cli": True, "mcp": False, "browser": False,
                                "proven": False}})
 
     assert result.ok is False
+    assert "CLI" in result.detail
+
+
+def test_a_route_with_no_proven_key_at_all_is_red():
+    """有一條路可用，但 facts 裡根本沒有 proven 這個欄位——技能還沒跑到驗證那一步，
+    或半路壞掉沒寫入。這不等於「驗證過但失敗」，而是「沒驗證過」，一樣算不通過，
+    不能因為 key 不存在就誤判成綠燈。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": True, "mcp": False, "browser": False}})
+
+    assert result.ok is False
+    assert "CLI" in result.detail
 ```
 
 > **期望值來源**：spec 成功定義 #13「明確指出 Zeabur 操作走的是哪一條路徑，且以該路徑實際執行一次操作成功。三層皆不可用時健檢必須紅燈並說明原因」。優先序 CLI > MCP > 瀏覽器取自 ADR-4 的能力比較：CLI 涵蓋全部操作、MCP 缺租主機與重新部署、瀏覽器對日常操作脆弱。
@@ -3997,10 +4023,33 @@ Expected: FAIL，`No module named 'checks.probes.zeabur'`。
 ```python
 """7 Zeabur 走哪一條路。
 
-Ordered by coverage, not by convenience. The CLI does everything; MCP cannot
-rent a server, restart, redeploy or delete — and renting is step one of
-installation while redeploy is a daily operation; the browser fills exactly
-those gaps but is brittle against console redesigns.
+Ordered by coverage, not by convenience. The CLI does everything, but
+zeabur.com sits outside the network allowlist and the mechanism to add a
+custom domain to that allowlist has been broken for months — even a
+Team-plan admin cannot work around it, and a managed account cannot even
+change that setting to try. MCP is not network-restricted, but its 26
+tools have no way to rent a server, redeploy, or delete anything, while
+renting is step one of installation and redeploy is a daily operation.
+The browser fills exactly those gaps and is also unrestricted, but breaks
+whenever Zeabur redesigns its console.
+
+So the path is not chosen at design time, it is probed at install time.
+Whether each path is actually reachable — MCP connectivity, whether the
+Chrome extension is installed — is a fact that only lives on Claude's
+side, not in this shell. This probe only reads the three booleans plus
+`proven` from `facts["zeabur"]` and decides; detecting them is the
+health-check skill's job, not this module's.
+
+`proven` means the health-check skill actually ran one read-only
+operation over the chosen route and it succeeded — not that the route
+merely looked reachable. Its absence is not the same as a passing check
+that wasn't recorded: it means the skill picked a route but never got as
+far as running that operation (or crashed before writing the result), so
+there is no evidence either way. "We could not confirm this route
+works" is different from "this route is broken", but for the purpose of
+trusting the route before it is exercised, both must fail closed —
+`proven` must be affirmatively `True`, and any other value (`False`,
+`None`, or missing) counts as not proven.
 """
 
 from ..model import CheckResult
@@ -4012,9 +4061,13 @@ PATHS = [
 ]
 
 WHY_BLOCKED = {
-    "cli": "CLI：zeabur.com 不在允許連線的清單裡。",
-    "mcp": "MCP：連不上 Zeabur 的 MCP 伺服器。",
-    "browser": "瀏覽器：Chrome 擴充功能沒有安裝或沒有開啟。",
+    "cli": (
+        "CLI（用文字指令操作 Zeabur 的方式）：zeabur.com 不在允許連線的網域清單裡，"
+        "而且加入自訂網域的功能本身故障中、修了五個月還沒修好，連系統管理員都改不了"
+        "這個設定，所以連「試試看能不能連」都做不到"
+    ),
+    "mcp": "MCP（讓 Claude 直接呼叫 Zeabur 功能的整合方式）：連不上 Zeabur 的 MCP 伺服器",
+    "browser": "瀏覽器（Claude 幫你操作 Chrome 分頁的方式）：Chrome 擴充功能沒有安裝，或還沒開啟",
 }
 
 
@@ -4024,23 +4077,42 @@ def probe(facts):
 
     if not available:
         return CheckResult(
-            id="zeabur", title="Zeabur 操作路徑", ok=False,
-            detail="三條路都不通。" + " ".join(WHY_BLOCKED[key] for key, _, _ in PATHS),
-            hint="三條全不通就沒辦法部署。先確認 Chrome 擴充功能有沒有裝，那條不受網路限制。",
+            id="zeabur",
+            title="Zeabur 操作路徑",
+            ok=False,
+            detail=(
+                "三條路都不通，沒辦法對 Zeabur 做任何操作，也就沒辦法部署、也沒辦法"
+                "查看正式環境現在的狀態：" +
+                "；".join(WHY_BLOCKED[key] for key, _, _ in PATHS) + "。"
+            ),
+            hint=(
+                "三條全斷就完全卡住了。先確認 Chrome 擴充功能有沒有裝、有沒有開啟——"
+                "那條不受網路白名單限制，最有機會先打通。"
+            ),
         )
 
     key, label, note = available[0]
-    if info.get("proven") is False:
+    if info.get("proven") is not True:
         return CheckResult(
-            id="zeabur", title="Zeabur 操作路徑", ok=False,
-            detail=f"{label} 看起來可用，但還沒有實際跑成功過一次操作，不算數。",
-            hint="請用這條路跑一次唯讀操作（例如列出專案）再檢查一次。",
+            id="zeabur",
+            title="Zeabur 操作路徑",
+            ok=False,
+            detail=(
+                f"{label} 看起來可以連得上，但還沒有實際跑成功過一次操作，不算數。"
+                "光是連得上不代表真的能用——沒有實測過，你不會知道它是不是卡在權限"
+                "或設定上，等真的要部署時才發現行不通。沒驗證過就是沒驗證過，"
+                "不會因為沒記錄到失敗就當作可以用。"
+            ),
+            hint="跟我說一聲，我用這條路跑一次唯讀操作（例如列出專案），確認它真的能動。",
         )
-    others = [lbl for k, lbl, _ in available[1:]]
-    backup = f"備援還有 {'、'.join(others)}。" if others else "沒有備援。"
+
+    others = [lbl for _key, lbl, _note in available[1:]]
+    backup = f"備援還有 {'、'.join(others)}。" if others else "沒有備援，這條路一斷就完全卡住。"
     return CheckResult(
-        id="zeabur", title="Zeabur 操作路徑", ok=True,
-        detail=f"{label} —— {note} 已實際跑成功一次。{backup}",
+        id="zeabur",
+        title="Zeabur 操作路徑",
+        ok=True,
+        detail=f"{label} —— {note} 已實際跑成功一次操作。{backup}",
     )
 ```
 
