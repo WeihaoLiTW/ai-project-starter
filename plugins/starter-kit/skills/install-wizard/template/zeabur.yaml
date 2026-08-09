@@ -1,0 +1,40 @@
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: starter-kit-app
+spec:
+  services:
+    - name: staging
+      template: GIT
+      spec:
+        source:
+          branch: develop
+        ports:
+          - id: web
+            port: 8080
+            type: HTTP
+        volumes:
+          - id: staging-data
+            dir: /data
+        env:
+          DATA_DIR:
+            default: /data
+          DJANGO_SETTINGS_MODULE:
+            default: project.settings.prod
+    - name: prod
+      template: GIT
+      spec:
+        source:
+          branch: main
+        ports:
+          - id: web
+            port: 8080
+            type: HTTP
+        volumes:
+          - id: prod-data
+            dir: /data
+        env:
+          DATA_DIR:
+            default: /data
+          DJANGO_SETTINGS_MODULE:
+            default: project.settings.prod
