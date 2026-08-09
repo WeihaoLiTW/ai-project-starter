@@ -24,11 +24,18 @@ def verify(path):
     workflow also calls it on its own, after transferring the file.
     """
     path = Path(path)
+    if path.stat().st_size == 0:
+        path.unlink(missing_ok=True)
+        raise SnapshotCorrupt(f"{path} 是空檔案，代表備份內容根本沒有送達（不是檔案損毀），已刪除。")
+
+    conn = sqlite3.connect(path)
     try:
-        result = sqlite3.connect(path).execute("PRAGMA integrity_check").fetchone()
+        result = conn.execute("PRAGMA integrity_check").fetchone()
         healthy = bool(result) and result[0] == "ok"
     except sqlite3.DatabaseError:
         healthy = False
+    finally:
+        conn.close()
 
     if not healthy:
         path.unlink(missing_ok=True)

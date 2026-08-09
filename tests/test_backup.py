@@ -3,7 +3,11 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from conftest import TEMPLATE
+
+sys.path.insert(0, str(TEMPLATE / "scripts"))
 
 
 def make_db(path, marker):
@@ -16,7 +20,6 @@ def make_db(path, marker):
 
 def test_the_snapshot_opens_and_contains_what_was_written(tmp_path):
     """備份產出的檔案能被 sqlite3 開啟，而且含備份當下寫入的那筆資料。"""
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import snapshot
 
     src = tmp_path / "db.sqlite3"
@@ -30,21 +33,30 @@ def test_the_snapshot_opens_and_contains_what_was_written(tmp_path):
 
 def test_a_corrupt_snapshot_is_reported_not_returned(tmp_path):
     """快照壞掉的時候會報錯，不會交出一個看起來正常的壞備份。"""
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import SnapshotCorrupt, verify
 
     broken = tmp_path / "backup.sqlite3"
     broken.write_bytes(b"not a database")
 
-    import pytest
     with pytest.raises(SnapshotCorrupt):
         verify(broken)
     assert not broken.exists()
 
 
+def test_a_zero_byte_snapshot_is_rejected_not_certified(tmp_path):
+    """空檔案（0 bytes）代表備份內容根本沒有送達，不能被驗證判定為健康備份。"""
+    from backup_snapshot import SnapshotCorrupt, verify
+
+    empty = tmp_path / "backup.sqlite3"
+    empty.touch()
+
+    with pytest.raises(SnapshotCorrupt):
+        verify(empty)
+    assert not empty.exists()
+
+
 def test_a_healthy_snapshot_passes_verification(tmp_path):
     """完整的快照通過檢查，而且檔案留著。"""
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import verify
 
     good = tmp_path / "backup.sqlite3"
@@ -56,7 +68,6 @@ def test_a_healthy_snapshot_passes_verification(tmp_path):
 
 def test_an_existing_target_does_not_silently_overwrite(tmp_path):
     """目標檔已經存在時會報錯，不會把舊備份蓋掉。"""
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import snapshot
 
     src = tmp_path / "db.sqlite3"
@@ -64,7 +75,6 @@ def test_an_existing_target_does_not_silently_overwrite(tmp_path):
     out = tmp_path / "backup.sqlite3"
     out.write_bytes(b"previous backup")
 
-    import pytest
     with pytest.raises(FileExistsError):
         snapshot(src, out)
     assert out.read_bytes() == b"previous backup"
@@ -72,7 +82,6 @@ def test_an_existing_target_does_not_silently_overwrite(tmp_path):
 
 def test_backups_older_than_three_months_are_removed(tmp_path):
     """超過三個月的備份會被清掉，三個月內的留著。"""
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import expired_tags
 
     now = datetime(2026, 8, 9, tzinfo=timezone.utc)
@@ -93,7 +102,6 @@ def test_expired_tags_handles_the_real_github_cli_timestamp_format(tmp_path):
     這個專案的 Python 下限是 3.10，所以兩種格式都要吃得下，否則正式清理
     備份的時候會直接丟例外，而不是只在測試裡才發現。
     """
-    sys.path.insert(0, str(TEMPLATE / "scripts"))
     from backup_snapshot import expired_tags
 
     now = datetime(2026, 8, 9, tzinfo=timezone.utc)
