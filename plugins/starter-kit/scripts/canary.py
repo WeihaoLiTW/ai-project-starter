@@ -18,6 +18,8 @@ try:
     with (Path.cwd() / "hook-canary.log").open("a", encoding="utf-8") as handle:
         handle.write(line)
 except Exception as exc:
+    # Registered on PreToolUse for Write|Edit. An unhandled failure here would
+    # end every single file edit in the session with a traceback.
     sys.stderr.write(f"Failed to write hook-canary.log: {exc}\n")
 
 emit({})
