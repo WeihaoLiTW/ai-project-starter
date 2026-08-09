@@ -11,21 +11,53 @@ import sys
 from pathlib import Path
 
 
+_JSON_TYPE_NAMES = {
+    bool: "boolean",
+    int: "number",
+    float: "number",
+    str: "string",
+    list: "array",
+    type(None): "null",
+}
+
+
 def read_payload():
     """Read the hook payload from stdin.
 
-    Returns {} when stdin is empty or whitespace-only.
-    Returns the parsed object for valid JSON.
-    For malformed JSON, writes one line to stderr and returns {}, never raising.
+    Always returns a dict. This is a guarantee, not a convention: every
+    caller downstream can treat the result as a dict without checking.
+
+    - Empty or whitespace-only stdin returns {} silently.
+    - Malformed JSON writes one line to stderr and returns {}.
+    - Valid JSON that is not a JSON object (a number, string, boolean,
+      null, or array) writes one line to stderr naming what it got, and
+      returns {}.
+    - Bytes on stdin that are not valid UTF-8 are decoded with
+      errors="replace" instead of raising.
+
+    Never raises, for any byte sequence on stdin.
     """
-    raw = sys.stdin.read().strip()
+    buffer = getattr(sys.stdin, "buffer", None)
+    if buffer is not None:
+        raw = buffer.read().decode("utf-8", errors="replace").strip()
+    else:
+        raw = sys.stdin.read().strip()
+
     if not raw:
         return {}
+
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         sys.stderr.write(f"Failed to parse hook payload: {exc}\n")
         return {}
+
+    if not isinstance(parsed, dict):
+        type_name = _JSON_TYPE_NAMES.get(type(parsed), type(parsed).__name__)
+        sys.stderr.write(f"Hook payload must be a JSON object; got {type_name}\n")
+        return {}
+
+    return parsed
 
 
 def emit(obj):
@@ -44,7 +76,7 @@ def run(cmd, cwd, timeout=120):
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timed out after {timeout}s"
-    except FileNotFoundError as exc:
+    except OSError as exc:
         return 127, "", str(exc)
 
 
