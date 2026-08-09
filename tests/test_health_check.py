@@ -131,7 +131,8 @@ def test_the_cli_is_named_when_it_is_reachable():
     """CLI 這條路通的時候，報告指名走 CLI。"""
     from checks.probes.zeabur import probe
 
-    result = probe({"zeabur": {"cli": True, "mcp": True, "browser": True}})
+    result = probe({"zeabur": {"cli": True, "mcp": True, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("CLI")
@@ -141,7 +142,8 @@ def test_mcp_is_named_when_the_cli_is_blocked():
     """CLI 不通、MCP 通，報告指名走 MCP。"""
     from checks.probes.zeabur import probe
 
-    result = probe({"zeabur": {"cli": False, "mcp": True, "browser": True}})
+    result = probe({"zeabur": {"cli": False, "mcp": True, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("MCP")
@@ -151,7 +153,8 @@ def test_the_browser_is_named_when_it_is_the_only_one_left():
     """只剩瀏覽器可用，報告指名走瀏覽器。"""
     from checks.probes.zeabur import probe
 
-    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": True}})
+    result = probe({"zeabur": {"cli": False, "mcp": False, "browser": True,
+                               "proven": True}})
 
     assert result.ok is True
     assert result.detail.startswith("瀏覽器")
@@ -176,3 +179,16 @@ def test_a_named_path_without_a_proven_operation_is_red():
                                "proven": False}})
 
     assert result.ok is False
+    assert "CLI" in result.detail
+
+
+def test_a_route_with_no_proven_key_at_all_is_red():
+    """有一條路可用，但 facts 裡根本沒有 proven 這個欄位——技能還沒跑到驗證那一步，
+    或半路壞掉沒寫入。這不等於「驗證過但失敗」，而是「沒驗證過」，一樣算不通過，
+    不能因為 key 不存在就誤判成綠燈。"""
+    from checks.probes.zeabur import probe
+
+    result = probe({"zeabur": {"cli": True, "mcp": False, "browser": False}})
+
+    assert result.ok is False
+    assert "CLI" in result.detail

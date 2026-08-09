@@ -16,6 +16,17 @@ Chrome extension is installed — is a fact that only lives on Claude's
 side, not in this shell. This probe only reads the three booleans plus
 `proven` from `facts["zeabur"]` and decides; detecting them is the
 health-check skill's job, not this module's.
+
+`proven` means the health-check skill actually ran one read-only
+operation over the chosen route and it succeeded — not that the route
+merely looked reachable. Its absence is not the same as a passing check
+that wasn't recorded: it means the skill picked a route but never got as
+far as running that operation (or crashed before writing the result), so
+there is no evidence either way. "We could not confirm this route
+works" is different from "this route is broken", but for the purpose of
+trusting the route before it is exercised, both must fail closed —
+`proven` must be affirmatively `True`, and any other value (`False`,
+`None`, or missing) counts as not proven.
 """
 
 from ..model import CheckResult
@@ -58,7 +69,7 @@ def probe(facts):
         )
 
     key, label, note = available[0]
-    if info.get("proven") is False:
+    if info.get("proven") is not True:
         return CheckResult(
             id="zeabur",
             title="Zeabur 操作路徑",
@@ -66,7 +77,8 @@ def probe(facts):
             detail=(
                 f"{label} 看起來可以連得上，但還沒有實際跑成功過一次操作，不算數。"
                 "光是連得上不代表真的能用——沒有實測過，你不會知道它是不是卡在權限"
-                "或設定上，等真的要部署時才發現行不通。"
+                "或設定上，等真的要部署時才發現行不通。沒驗證過就是沒驗證過，"
+                "不會因為沒記錄到失敗就當作可以用。"
             ),
             hint="跟我說一聲，我用這條路跑一次唯讀操作（例如列出專案），確認它真的能動。",
         )
