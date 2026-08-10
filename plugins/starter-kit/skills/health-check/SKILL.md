@@ -15,6 +15,7 @@ shell 看不到這些，所以你要自己探完，寫進 facts 檔。有幾項�
 
 | 要探的 | 怎麼探 |
 |---|---|
+| 使用者專案的資料夾在哪 | 這是他複製樣板之後實際在跑的那個資料夾，**不是**這個 plugin 自己的資料夾。寫進 `facts["repo"]` 跟 `facts["workdir"]`（同一個絕對路徑，兩個不同探針各自讀自己的欄位名稱）——沒寫的話，`suite`／`history` 兩個探針會退回讀 `"."`，也就是執行 `python3 -m checks.collect` 時的目前目錄；如果照下面「然後」那一段先 `cd` 進了這個 plugin 的目錄，`"."` 指到的就是 plugin 自己，不是使用者的專案，驗出來的東西全部是錯的目標 |
 | 現在是不是本機模式 | 看設定，或問使用者確認「Run new tasks in the cloud」是關的 |
 | 三個 hook 有沒有真的跑過 | 寫一個檔案、結束一輪，看 `facts["hooks_fired"]` 裡有沒有出現這三個字串（`safety_net` 探針就是照這三個字比對，缺一個就紅）：`SessionStart`、`PreToolUse`、`Stop` |
 | GitHub 上有沒有這個 repo | 在工作資料夾跑 `git ls-remote origin`——repo 是公開的，不用認證，GitHub 本身也不在網路白名單限制內，這條最省事。把查到的 `帳號/repo 名稱` 寫進 `facts["github"]["repo"]` |
@@ -38,15 +39,21 @@ shell 看不到這些，所以你要自己探完，寫進 facts 檔。有幾項�
 
 ## 然後
 
-把探到的東西寫成 facts JSON，跑：
+把探到的東西寫成 facts JSON，寫到使用者專案資料夾裡（例如
+`<使用者專案>/facts.json`），跑：
 
-    cd plugins/starter-kit
-    python3 -m checks.collect facts.json reports/
+    cd "${CLAUDE_PLUGIN_ROOT}"
+    python3 -m checks.collect <使用者專案>/facts.json <使用者專案>/reports/
 
-（模組內用的是相對匯入，一定要用 `-m checks.collect` 這種模組寫法跑，
-直接 `python3 checks/collect.py` 會匯入失敗。）
+**`cd` 進的是這個 plugin 自己的資料夾，不是使用者的專案**——`checks` 模組內用
+的是相對匯入，一定要在 plugin 目錄底下用 `-m checks.collect` 這種模組寫法跑，
+直接 `python3 checks/collect.py` 會匯入失敗；使用者從來不會把這個 plugin 的
+原始碼複製到自己的工作資料夾裡，所以這裡不能寫成相對路徑 `plugins/starter-kit`
+——`CLAUDE_PLUGIN_ROOT` 這個環境變數才是這個 plugin 實際被裝到的位置。facts.json
+跟輸出的報告資料夾則相反，要用使用者專案的**絕對路徑**，不要用相對路徑，否則
+會被解讀成相對於 plugin 目錄，而不是使用者的專案。
 
-報告在 `reports/health-check.html`。**用他看得懂的話講紅的那幾項**，
+報告在 `<使用者專案>/reports/health-check.html`。**用他看得懂的話講紅的那幾項**，
 不要把 JSON 貼給他。
 
 ## 講結果的方式
