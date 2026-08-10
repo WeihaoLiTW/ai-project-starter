@@ -7,6 +7,21 @@
 from ..model import CheckResult
 
 
+def _marker_present(marker, rows):
+    """Whether `marker` shows up anywhere in `rows`.
+
+    The skill tells Claude to write the whole row it read back (something
+    like "id=1 body=m1 created=...") into `snapshot_rows`, not the bare
+    marker text by itself. Comparing `marker in rows` is exact membership
+    against that list, so a row that legitimately contains the marker as
+    part of a longer string never matches — a complete backup gets reported
+    as missing the data it actually has, which is the most expensive false
+    red this report can produce. Matching by substring across the rows is
+    what the data the skill actually writes calls for.
+    """
+    return any(marker in row for row in rows)
+
+
 def probe(facts):
     info = facts.get("backup", {})
     marker = info.get("marker")
@@ -28,7 +43,7 @@ def probe(facts):
             "出事故要救資料時，這份備份等於不存在。"
         )
         hints.append("跟我說一聲，我來檢查備份檔案壞在哪裡，並重新跑一次。")
-    elif marker and marker not in info.get("snapshot_rows", []):
+    elif marker and not _marker_present(marker, info.get("snapshot_rows", [])):
         problems.append(
             "備份檔打得開，但裡面沒有那筆測試資料，代表備份的內容不完整或抓的時間"
             "點不對——真的需要還原時，可能會發現該有的資料早就漏掉了。"
