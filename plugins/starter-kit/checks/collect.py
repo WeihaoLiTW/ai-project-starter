@@ -21,7 +21,15 @@ def collect(facts_path, out_dir):
     Returns 0 if every probe is green, 1 if any is red — the exit code a
     caller (or a wrapper skill) can check without parsing the report.
     """
-    facts = json.loads(Path(facts_path).read_text("utf-8"))
+    try:
+        facts = json.loads(Path(facts_path).read_text("utf-8"))
+    except json.JSONDecodeError as exc:
+        print(
+            f"facts 檔案 {facts_path} 不是合法的 JSON，"
+            f"第 {exc.lineno} 行、第 {exc.colno} 欄：{exc.msg}。"
+            "請檢查這個檔案的格式，不是專案本身的問題。"
+        )
+        return 1
     results = run_all(facts)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
