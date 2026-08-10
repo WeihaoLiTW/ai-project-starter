@@ -14,10 +14,23 @@ TEMPLATE_DEFAULT_KEY = "django-insecure-CHANGE-ME"
 
 def problems(settings):
     """Every reason this configuration must not go to production."""
+    from django.core.exceptions import ImproperlyConfigured
+
     found = []
     if getattr(settings, "DEBUG", False):
         found.append("DEBUG 是開的。正式環境開著它，出錯時會把程式碼細節顯示給所有人看。")
-    key = getattr(settings, "SECRET_KEY", "")
+    try:
+        # `getattr(settings, "SECRET_KEY", default)` cannot fall back to
+        # `default` here: Django's own LazySettings.__getattr__ raises
+        # ImproperlyConfigured (not AttributeError) for an empty
+        # SECRET_KEY, so the default value never gets a chance to apply.
+        # Without this except, an unset key crashes with a raw traceback
+        # instead of reaching the friendly message below — and this script
+        # runs on every deploy, so that traceback is what the audience who
+        # cannot read one would see.
+        key = settings.SECRET_KEY
+    except ImproperlyConfigured:
+        key = ""
     if not key:
         found.append("SECRET_KEY 是空的。這把鑰匙用來簽登入狀態，沒有它任何人都能偽造登入。")
     elif key == TEMPLATE_DEFAULT_KEY or key.startswith("django-insecure-"):
