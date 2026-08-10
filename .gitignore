@@ -17,6 +17,3 @@ __pycache__/
 
 # Scratch space for the plan execution workflow
 .superpowers/
-
-# Left behind by the Task 1 canary while verifying hooks fire
-hook-canary.log

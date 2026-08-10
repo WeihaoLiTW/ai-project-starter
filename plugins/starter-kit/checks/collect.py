@@ -38,7 +38,7 @@ def collect(facts_path, out_dir):
     red = [r for r in results if not r.ok]
     for item in red:
         print(f"紅：{item.title} —— {item.detail}")
-    print(f"\n九項裡有 {len(results) - len(red)} 項是綠的。")
+    print(f"\n{len(results)} 項裡有 {len(results) - len(red)} 項是綠的。")
     return 1 if red else 0
 
 
