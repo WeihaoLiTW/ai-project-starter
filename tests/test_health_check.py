@@ -42,10 +42,10 @@ def test_the_report_covers_all_nine_items():
     assert len(default_probes()) == 9
 
 
-def test_all_nine_probes_are_real_not_placeholders_expected_red_until_task_13():
-    """刻意保留的紅燈：在 Task 13 把九個真正的探針全部寫完之前，這個測試都應該是
-    失敗的。它檢查的是「沒有任何一項是佔位版本」，不是「湊得出九個東西」——
-    不要為了讓它變綠而放寬這個判斷條件，也不要用字串比對報告文字取代它。
+def test_all_nine_probes_are_real_not_placeholders():
+    """九個探針全部是真正的實作，沒有一個是佔位版本。它檢查的是「沒有任何
+    一項是佔位版本」，不是「湊得出九個東西」——不要為了讓它變綠而放寬這個
+    判斷條件，也不要用字串比對報告文字取代它。
     """
     from checks.runner import default_probes
 
@@ -53,7 +53,7 @@ def test_all_nine_probes_are_real_not_placeholders_expected_red_until_task_13():
     placeholders = [p for p in probes if getattr(p, "is_placeholder", False)]
 
     assert not placeholders, (
-        f"還有 {len(placeholders)} 個探針是佔位版本，尚未被 Task 13 的真正探針取代"
+        f"還有 {len(placeholders)} 個探針是佔位版本，尚未被真正的探針取代"
     )
 
 
@@ -108,6 +108,61 @@ def test_history_probe_names_the_commit_that_fails(repo):
 
     assert result.ok is False
     assert bad_commit[:7] in result.detail
+
+
+def test_history_probe_is_red_when_no_sampled_commit_has_a_test_runner(tmp_path):
+    """整個 repo 從來沒有 scripts/run_tests.sh，抽驗到的每個 commit 都沒有測試
+    入口可以驗證。這不能算綠燈——沒有任何一次驗證真的執行過，回報綠燈等於在
+    零證據上宣稱「歷史版本都跑得起來」，而使用者沒辦法分辨這跟真的驗證過的
+    綠燈有什麼不同。"""
+    from checks.probes.history import probe
+
+    root = tmp_path / "work"
+    root.mkdir()
+    (root / "README.md").write_text("hello\n", encoding="utf-8")
+    git("init", "-q", "-b", "main", cwd=root)
+    git("config", "user.email", "kit@example.com", cwd=root)
+    git("config", "user.name", "kit", cwd=root)
+    git("add", "-A", cwd=root)
+    git("commit", "-q", "-m", "no test runner at all", cwd=root)
+
+    result = probe({"repo": root, "sample": 3})
+
+    assert result.ok is False
+    assert "沒有測試入口" in result.detail
+
+
+def test_history_probe_counts_only_commits_that_actually_ran(tmp_path):
+    """抽驗到的版本裡，有一個沒有測試入口——這一個不能被算進「跑得起來」的
+    數字裡，detail 要老實說有幾個真的被驗證過、有幾個沒有測試入口。"""
+    from checks.probes.history import probe
+
+    root = tmp_path / "work"
+    root.mkdir()
+    (root / "README.md").write_text("hello\n", encoding="utf-8")
+    git("init", "-q", "-b", "main", cwd=root)
+    git("config", "user.email", "kit@example.com", cwd=root)
+    git("config", "user.name", "kit", cwd=root)
+    git("add", "-A", cwd=root)
+    git("commit", "-q", "-m", "no test runner yet", cwd=root)
+
+    (root / "tests").mkdir()
+    (root / "tests" / "test_ok.py").write_text(
+        "def test_ok():\n    \"\"\"這個永遠是綠的。\"\"\"\n    assert True\n",
+        encoding="utf-8",
+    )
+    (root / "scripts").mkdir()
+    (root / "scripts" / "run_tests.sh").write_text(
+        "#!/bin/sh\nexec python3 -m pytest tests/ -q \"$@\"\n", encoding="utf-8"
+    )
+    git("add", "-A", cwd=root)
+    git("commit", "-q", "-m", "add a runner", cwd=root)
+
+    result = probe({"repo": root, "sample": 10})
+
+    assert result.ok is True
+    assert "其中 1 個有測試入口" in result.detail
+    assert "另外 1 個" in result.detail
 
 
 def test_checking_history_leaves_the_working_folder_exactly_as_it_was(repo):
@@ -182,6 +237,53 @@ def test_a_named_path_without_a_proven_operation_is_red():
     assert "CLI" in result.detail
 
 
+def test_environment_probe_flags_a_windows_network_drive_regardless_of_host_platform():
+    """這個探針永遠跑在 Cowork 的 VM（Linux）裡，不是使用者真正的 Windows
+    機器上——用探針自己的 `platform.system()` 判斷，永遠不會等於 Windows，
+    這個分支就永遠不會觸發。判斷要看 facts 裡 workdir 這個字串本身的樣子，
+    不能看跑探針的這台機器是什麼系統。"""
+    from checks.probes.environment import probe
+
+    result = probe({"local_mode": True, "workdir": "\\\\fileserver\\share\\project"})
+
+    assert result.ok is False
+    assert "C:\\Users" in result.detail
+
+
+def test_environment_probe_flags_a_drive_letter_path_not_under_users():
+    """`D:\\work\\project` 不是網路磁碟，但也不在 `C:\\Users\\` 底下——
+    這正是原本的判斷邏輯裡永遠碰不到的那條分支（只有 platform.system() 等於
+    Windows，或路徑是 UNC 開頭，才會進到判斷，兩者在這個探針執行的環境裡
+    都不成立），要能被抓出來。"""
+    from checks.probes.environment import probe
+
+    result = probe({"local_mode": True, "workdir": "D:\\work\\project"})
+
+    assert result.ok is False
+    assert "C:\\Users" in result.detail
+
+
+def test_environment_probe_accepts_a_path_under_c_users():
+    """`C:\\Users\\...` 底下的路徑是合法的，不該被誤判成網路磁碟或需要搬移。"""
+    from checks.probes.environment import probe
+
+    result = probe({
+        "local_mode": True,
+        "workdir": "C:\\Users\\someone\\project",
+    })
+
+    assert result.ok is True
+
+
+def test_environment_probe_accepts_an_ordinary_mac_path():
+    """Mac 的路徑本來就不會長得像 Windows 路徑，不該被這個判斷誤傷。"""
+    from checks.probes.environment import probe
+
+    result = probe({"local_mode": True, "workdir": "/Users/someone/project"})
+
+    assert result.ok is True
+
+
 def test_a_route_with_no_proven_key_at_all_is_red():
     """有一條路可用，但 facts 裡根本沒有 proven 這個欄位——技能還沒跑到驗證那一步，
     或半路壞掉沒寫入。這不等於「驗證過但失敗」，而是「沒驗證過」，一樣算不通過，
@@ -192,3 +294,94 @@ def test_a_route_with_no_proven_key_at_all_is_red():
 
     assert result.ok is False
     assert "CLI" in result.detail
+
+
+def _safe_prod_env():
+    return {
+        "DJANGO_DEBUG": "0",
+        "DJANGO_SECRET_KEY": "a-real-secret-key-generated-at-install-time",
+        "DJANGO_ALLOWED_HOSTS": "example.zeabur.app",
+    }
+
+
+def test_service_probe_accepts_a_string_status_code_from_curl():
+    """skill 的指示是用 `curl -w '%{http_code}'` 去查網址，印出來的是字串
+    `"200"`，不是整數 200。這種格式一定要被當成「200」，不能因為型別不同就
+    判成沒過——之前 `"200" != 200` 永遠是 True，兩個環境明明都是 200 也會被
+    回報成壞的。"""
+    from checks.probes.service import probe
+
+    result = probe({
+        "endpoints": {"staging": "200", "prod": "200"},
+        "prod_env": _safe_prod_env(),
+    })
+
+    assert result.ok is True
+    assert "不是 200" not in result.detail
+
+
+def test_service_probe_still_catches_a_string_status_code_that_is_not_200():
+    """字串格式也要能抓到真正的失敗，不能因為接受字串就變成什麼都放行。"""
+    from checks.probes.service import probe
+
+    result = probe({
+        "endpoints": {"staging": "500", "prod": "200"},
+        "prod_env": _safe_prod_env(),
+    })
+
+    assert result.ok is False
+    assert "staging 回 500，不是 200" in result.detail
+
+
+def test_service_probe_still_treats_an_unreachable_endpoint_as_not_200():
+    """完全連不上（沒有回應碼，只有 None 或空字串）時，還是要判定為沒過，
+    而不是被字串／整數的比較邏輯意外放行。"""
+    from checks.probes.service import probe
+
+    result = probe({
+        "endpoints": {"staging": None, "prod": "200"},
+        "prod_env": _safe_prod_env(),
+    })
+
+    assert result.ok is False
+    assert "staging 回 連不上，不是 200" in result.detail
+
+
+def test_data_probe_matches_a_marker_that_is_a_substring_of_a_row():
+    """skill 要求把讀到的整行資料寫進 `snapshot_rows`（例如
+    `"id=1 body=m1 created=2026-08-09"`），不是只寫 marker 本身。用完全相等
+    去比對 marker 找不到，備份明明含資料卻被判定成不完整——這是最高風險的
+    誤判，要改成子字串比對。"""
+    from checks.probes.data import probe
+
+    result = probe({
+        "backup": {
+            "marker": "m1",
+            "survived_redeploy": True,
+            "release_tag": "backup-2026-08-09",
+            "snapshot_opens": True,
+            "snapshot_rows": ["id=1 body=m1 created=2026-08-09T00:00:00Z"],
+        }
+    })
+
+    assert result.ok is True
+    assert "不完整" not in result.detail
+
+
+def test_data_probe_still_flags_a_marker_missing_from_every_row():
+    """marker 真的不在任何一行資料裡時，還是要判定成不完整——子字串比對
+    不能變成「什麼都算過」。"""
+    from checks.probes.data import probe
+
+    result = probe({
+        "backup": {
+            "marker": "m1",
+            "survived_redeploy": True,
+            "release_tag": "backup-2026-08-09",
+            "snapshot_opens": True,
+            "snapshot_rows": ["id=2 body=something-else created=2026-08-09"],
+        }
+    })
+
+    assert result.ok is False
+    assert "不完整" in result.detail
