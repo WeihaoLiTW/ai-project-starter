@@ -15,6 +15,50 @@ from _shared import emit, read_payload, repo_root, run, secret_label
 
 FAILED_TEST = re.compile(r"^(FAILED|ERROR)\s+(\S+)", re.MULTILINE)
 
+# `_shared.run` never raises; it turns two specific environment failures into
+# fake return codes so callers can tell them apart from a real test result:
+# 127 (the OSError branch) when the command itself could not even start —
+# most commonly because the interpreter or a dependency (e.g. pytest) is not
+# installed yet — and 124 when it ran past the timeout without finishing.
+# Neither of those is "this turn's changes broke something"; both are
+# "the environment cannot run the suite at all right now". Telling the user
+# their tests failed when nothing ever ran points them at the wrong problem
+# and, for someone who cannot read a stack trace, is indistinguishable from
+# a real regression.
+COULD_NOT_RUN = {
+    127: "找不到執行測試需要的指令或套件。這台機器上很可能還沒裝好這個專案需要的東西（例如 pytest）。",
+    124: "測試跑了太久，超過時間限制被中斷了，沒有跑出結果。",
+}
+
+
+def failure_reason(code, out, err):
+    """The message to show when the test runner exits non-zero.
+
+    Two different situations read the same to someone who cannot inspect a
+    stack trace, but are not the same thing, so they get different
+    messages: the environment could not run the tests at all (see
+    COULD_NOT_RUN above — not caused by this turn's changes), versus the
+    tests actually ran and something in them is broken.
+    """
+    if code in COULD_NOT_RUN:
+        return (
+            "沒辦法執行測試，所以這一輪的改動還沒有存檔——這不是這次改動造成的，"
+            f"是環境本身跑不起來測試。{COULD_NOT_RUN[code]}\n"
+            "改動都還在，沒有東西不見，把環境修好之後會自動存檔。"
+        )
+    names = [name for _, name in FAILED_TEST.findall(out + err)]
+    if names:
+        detail = f"壞掉的是：{', '.join(names[:5])}"
+    else:
+        tail = (out + err).strip()[-500:] or "（沒有任何輸出）"
+        detail = f"看不出是哪一個測試，完整訊息如下：\n{tail}"
+    return (
+        "測試沒過，所以這一輪的改動還沒有存檔。\n"
+        f"{detail}\n"
+        "先把它修好，修好之後會自動存檔。改動都還在，沒有東西不見。"
+    )
+
+
 payload = read_payload()
 root = repo_root(Path.cwd())
 
@@ -42,15 +86,7 @@ if code != 0:
     # conversation in a loop the user cannot get out of.
     if payload.get("stop_hook_active"):
         emit({})
-    names = [name for _, name in FAILED_TEST.findall(out + err)] or ["（看不出是哪一個）"]
-    emit({
-        "decision": "block",
-        "reason": (
-            "測試沒過，所以這一輪的改動還沒有存檔。\n"
-            f"壞掉的是：{', '.join(names[:5])}\n"
-            "先把它修好，修好之後會自動存檔。改動都還在，沒有東西不見。"
-        ),
-    })
+    emit({"decision": "block", "reason": failure_reason(code, out, err)})
 
 
 def save_failed(step, stderr_text):

@@ -240,6 +240,50 @@ def test_when_every_staged_path_is_a_secret_nothing_is_committed_and_user_is_tol
     assert ".env" in out.get("systemMessage", "")
 
 
+def test_a_missing_command_is_reported_as_could_not_run_not_as_a_test_failure(repo):
+    """`scripts/run_tests.sh` 存在，但它呼叫的指令根本不存在（例如套件還沒裝好，
+    `python3 -m pytest` 找不到 pytest）——這不是「這次改動讓測試變紅」，是環境
+    跑不起來測試。訊息要講清楚是這個原因，不能說成「測試沒過」，也不能因為
+    找不到 FAILED/ERROR 這種格式的輸出，就印出佔位字「（看不出是哪一個）」，
+    讓人誤以為是自己剛剛的改動壞掉了。"""
+    (repo / "scripts" / "run_tests.sh").write_text(
+        "#!/bin/sh\nexec this_command_does_not_exist_xyz\n", encoding="utf-8"
+    )
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert out.get("decision") == "block"
+    reason = out["reason"]
+    assert "沒辦法執行測試" in reason
+    assert "測試沒過" not in reason
+    assert "看不出是哪一個）" not in reason
+
+
+def test_a_check_failure_with_no_named_test_shows_the_real_output(repo):
+    """`run_tests.sh` 跑起來了、也真的失敗了，但輸出不是 pytest 的
+    `FAILED test_x` 格式（例如換成另一個檢查腳本失敗）——這種情況下不該
+    印出「看不出是哪一個」這種空話，而要把實際輸出貼出來，讓人看得到
+    線索。這跟上一個測試不同：這裡指令確實跑了、確實失敗了，所以歸類
+    是「測試沒過」，不是「沒辦法執行測試」。"""
+    (repo / "scripts" / "run_tests.sh").write_text(
+        "#!/bin/sh\necho '這裡缺了一個定義的詞：某某詞'\nexit 1\n", encoding="utf-8"
+    )
+    (repo / "tests" / "test_more.py").write_text(
+        "def test_more():\n    \"\"\"綠的。\"\"\"\n    assert True\n", encoding="utf-8"
+    )
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert out.get("decision") == "block"
+    reason = out["reason"]
+    assert "測試沒過" in reason
+    assert "某某詞" in reason
+    assert "看不出是哪一個）" not in reason
+
+
 def test_missing_test_runner_names_the_path_on_stderr(repo):
     """`scripts/run_tests.sh` 不存在時（裝壞了的安裝），不能安靜地什麼都
     不做——stderr 要點名它找的是哪個路徑，裝機的人才查得出來。"""
