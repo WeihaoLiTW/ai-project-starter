@@ -69,6 +69,47 @@ def test_the_shipped_workflow_calls_the_glossary_and_superset_checks_only_throug
     assert stray_script_commands(first_job_text(workflow), local_script) == []
 
 
+def test_first_job_text_finds_the_test_job_not_the_on_trigger_block():
+    """真實的 workflow 檔案在 `jobs:` 之前有一段 `on:`（`push:` / `pull_request:`）
+    區塊，`push:` 才是整份檔案第一個縮排兩格的 key，不是 `jobs:` 底下的
+    `test:`。這裡直接用真正出貨的 workflow 檔案驗證，不是自己寫一段乾淨、
+    一開頭就是 `jobs:` 的合成字串——那種合成字串測不出「前面還有 on: 區塊」
+    這個真實形狀的差異，之前就是因為所有合成字串都湊巧從 `jobs:` 開頭，才
+    讓這個定位錯誤一路沒被抓到。"""
+    workflow = (TEMPLATE / ".github" / "workflows" / "tests.yml").read_text("utf-8")
+
+    job_text = first_job_text(workflow)
+
+    assert job_text.startswith("  test:")
+    assert "push:" not in job_text
+    assert "branches:" not in job_text
+
+
+def test_a_stray_script_injected_into_the_real_workflow_is_caught():
+    """回歸測試：把一個真正的 stray 腳本呼叫（`run_tests.sh` 沒有走過的
+    `scripts/check_ci_only_thing.py`）注入到真正出貨的 workflow 檔案裡的
+    `test` job，而不是一段從 `jobs:` 開頭、方便測試但跟真實檔案形狀不一樣
+    的合成字串。之前 `first_job_text` 定位錯了 job（見上一個測試），這個
+    guard 檢查的其實是 `on:` 區塊，看不到 `test` job 裡真正發生的事，於是
+    这個檢查即使真的被繞過了也會回報「一致」；這裡直接對真實檔案的形狀
+    釘住修好之後的結果。"""
+    workflow = (TEMPLATE / ".github" / "workflows" / "tests.yml").read_text("utf-8")
+    local_script = (TEMPLATE / "scripts" / "run_tests.sh").read_text("utf-8")
+    workflow_with_violation = workflow.replace(
+        "run: sh scripts/run_tests.sh",
+        "run: sh scripts/run_tests.sh\n"
+        "      - name: Stray CI-only check\n"
+        "        run: python3 scripts/check_ci_only_thing.py",
+    )
+    assert workflow_with_violation != workflow  # the injection actually landed
+
+    result = stray_script_commands(
+        first_job_text(workflow_with_violation), local_script
+    )
+
+    assert result == ["scripts/check_ci_only_thing.py"]
+
+
 def test_a_ci_only_script_call_outside_run_tests_sh_is_flagged():
     """`test` job 裡直接呼叫了一個 `run_tests.sh` 沒有走的腳本——這是 CI 多跑
     一項本機重現不了的檢查，要被抓出來，不能靠只認 pytest 的正規表達式漏掉。"""

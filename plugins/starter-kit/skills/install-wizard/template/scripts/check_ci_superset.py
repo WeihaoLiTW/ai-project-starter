@@ -19,6 +19,7 @@ from pathlib import Path
 ENTRYPOINT = "scripts/run_tests.sh"
 TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$")
 SCRIPT_PATH = re.compile(r"scripts/[\w.\-/]+\.(?:py|sh)")
+JOBS_KEY = re.compile(r"^jobs:\s*$")
 JOB_KEY = re.compile(r"^  [A-Za-z0-9_-]+:\s*$")
 
 
@@ -62,8 +63,23 @@ def first_job_text(workflow):
     `stray_script_commands` below; scoping by job avoids flagging a script
     that only that later job has a reason to run. Still line matching, not
     a YAML parser: it only recognizes this repository's own workflow shape.
+
+    Anchored on the top-level `jobs:` key first, then the first
+    2-space-indented key found after it. Without that anchor, the first
+    2-space-indented key in a real workflow file is `push:` under `on:`
+    (the trigger block sits above `jobs:`), not `test:` — this function
+    would then hand back the trigger block and the caller would never see
+    any job at all, let alone the first one.
     """
     lines = workflow.splitlines()
+    jobs_at = None
+    for i, line in enumerate(lines):
+        if JOBS_KEY.match(line):
+            jobs_at = i
+            break
+    if jobs_at is None:
+        return workflow
+    lines = lines[jobs_at + 1 :]
     start = None
     end = len(lines)
     for i, line in enumerate(lines):
