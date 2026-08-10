@@ -26,6 +26,8 @@ def probe(facts):
     commits = out.split()
     chosen = commits if len(commits) <= sample else random.sample(commits, sample)
     broken = []
+    unchecked = []
+    exercised = 0
     scratch = Path(tempfile.mkdtemp(prefix="health-history-"))
     try:
         for commit in chosen:
@@ -40,7 +42,15 @@ def probe(facts):
             try:
                 runner = checkout / "scripts" / "run_tests.sh"
                 if not runner.exists():
+                    # No test entrypoint at this commit: nothing was run,
+                    # so this cannot be counted toward "checked and green" —
+                    # doing so is exactly how the summary below used to
+                    # assert #8 ("any commit you check out runs") on zero
+                    # evidence. Recorded separately so the detail line can
+                    # say so instead of silently inflating the pass count.
+                    unchecked.append(commit[:7])
                     continue
+                exercised += 1
                 code, _, _ = run(["sh", str(runner)], cwd=checkout, timeout=300)
                 if code != 0:
                     broken.append(commit[:7])
@@ -50,9 +60,29 @@ def probe(facts):
         shutil.rmtree(scratch, ignore_errors=True)
         run(["git", "worktree", "prune"], cwd=root)
 
+    # A commit that actually failed always wins the verdict. Otherwise,
+    # zero exercised commits is its own red state rather than a silent
+    # green: "nobody has a test runner to check" is not the same claim as
+    # "everything checked out is green", and reporting it as green is
+    # exactly the false-positive this probe exists to prevent — asserting
+    # criterion #8 on evidence that was never collected. It is kept red
+    # (not a separate "could not check" status) because this report has
+    # no third visual state for someone who cannot read the detail text;
+    # a status this audience cannot act on has to fail closed.
+    if broken:
+        detail = f"回不去的版本：{', '.join(broken)}"
+    elif exercised == 0:
+        detail = (
+            f"抽驗的 {len(chosen)} 個版本都沒有 scripts/run_tests.sh，沒有測試"
+            "入口可以驗證——不是「驗證過都是綠的」，是根本沒有東西可以驗證。"
+        )
+    else:
+        detail = f"抽驗 {len(chosen)} 個版本，其中 {exercised} 個有測試入口，都跑得起來。"
+        if unchecked:
+            detail += f"另外 {len(unchecked)} 個（{', '.join(unchecked)}）沒有測試入口，沒辦法確認。"
+
     return CheckResult(
         id="history", title="歷史版本",
-        ok=not broken,
-        detail=f"回不去的版本：{', '.join(broken)}" if broken
-        else f"抽驗 {len(chosen)} 個版本，都跑得起來。",
+        ok=not broken and exercised > 0,
+        detail=detail,
     )
