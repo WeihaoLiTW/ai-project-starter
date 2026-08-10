@@ -76,6 +76,34 @@ def test_default_probes_contains_an_execution_time_failure_end_to_end(monkeypatc
     assert "執行時炸了" in results[0].detail
 
 
+def test_suite_probe_without_a_repo_fact_is_an_explicit_red_not_a_guess():
+    """skill 沒有把 `facts["repo"]` 寫進去時，探針不能安靜地退回讀 `"."`——
+    skill 說明文件寫得很清楚，跑 `checks.collect` 之前會先 `cd` 進這個 plugin
+    自己的資料夾，這時候 `"."` 指的是 plugin 自己，不是使用者的專案。用
+    `"."` 湊出一個結果，不管紅綠都是在講一個沒人問過的專案，比講不出結果
+    更容易誤導人。"""
+    from checks.probes.suite import probe
+
+    result = probe({})
+
+    assert result.ok is False
+    assert "repo" in result.detail
+    assert "沒有任何東西在保護你" not in result.detail  # not the "no runner" guess
+
+
+def test_history_probe_without_a_repo_fact_is_an_explicit_red_not_a_guess():
+    """跟 suite 探針同一個理由：沒有 `facts["repo"]`，不能安靜地抽驗 `"."`
+    底下的 git 歷史——那很可能是這個 plugin 自己的歷史，不是使用者專案的，
+    抽出來的綠燈或紅燈都跟使用者的專案無關。"""
+    from checks.probes.history import probe
+
+    result = probe({"sample": 3})
+
+    assert result.ok is False
+    assert "repo" in result.detail
+    assert "抽驗" not in result.detail  # not the "sampled N commits" wording
+
+
 def test_history_probe_reports_green_when_every_commit_passes(repo):
     """歷史抽驗：git 歷史上每一個 commit checkout 出來測試都是綠的，探針回報綠燈。"""
     from checks.probes.history import probe
@@ -258,6 +286,19 @@ def test_environment_probe_flags_a_drive_letter_path_not_under_users():
     from checks.probes.environment import probe
 
     result = probe({"local_mode": True, "workdir": "D:\\work\\project"})
+
+    assert result.ok is False
+    assert "C:\\Users" in result.detail
+
+
+def test_environment_probe_flags_a_drive_letter_path_with_forward_slashes():
+    """Windows 本身接受 `/` 當路徑分隔符，很多工具（包含這個探針的呼叫端）
+    回報路徑時就是用 `/` 不是 `\\`——`D:/work/proj` 跟 `D:\\work\\proj` 是
+    同一個不安全的路徑，只是分隔符不同。判斷式只認反斜線的話，換成正斜線
+    的同一個路徑會直接跳過這個檢查，被當成沒事。"""
+    from checks.probes.environment import probe
+
+    result = probe({"local_mode": True, "workdir": "D:/work/proj"})
 
     assert result.ok is False
     assert "C:\\Users" in result.detail

@@ -14,8 +14,14 @@ from ..model import CheckResult
 # gate, but the "must be under C:\Users\" constraint was unreachable dead
 # code, and a Windows user with a network drive or a redirected/relocated
 # "Documents" folder went green as if that had been checked.
-WINDOWS_PATH = re.compile(r"^[A-Za-z]:\\|^\\\\")
-SAFE_WINDOWS_ROOT = re.compile(r"^[A-Za-z]:\\Users\\", re.IGNORECASE)
+#
+# Windows itself accepts both `\` and `/` as path separators, and tools
+# report paths with either — `D:/work/proj` is exactly as much a drive-letter
+# path as `D:\work\proj`. Matching backslash only meant a forward-slash
+# report of the very same unsafe path never even reached the "is it under
+# C:\Users\" check, and went green as if it had been.
+WINDOWS_PATH = re.compile(r"^[A-Za-z]:[\\/]|^\\\\|^//")
+SAFE_WINDOWS_ROOT = re.compile(r"^[A-Za-z]:[\\/]Users[\\/]", re.IGNORECASE)
 
 
 def probe(facts):

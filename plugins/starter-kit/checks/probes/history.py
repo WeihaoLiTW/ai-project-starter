@@ -16,7 +16,22 @@ from ..model import CheckResult
 
 
 def probe(facts):
-    root = Path(facts.get("repo", "."))
+    repo = facts.get("repo")
+    if not repo:
+        # Same reasoning as checks/probes/suite.py: falling back to "."
+        # means sampling whatever git history the current directory
+        # happens to sit inside — per the skill's own instructions that is
+        # this plugin's own repository once it has `cd`ed there, not the
+        # user's project. Sampling the plugin's own commits and reporting
+        # that as the user's project history is a false green (or an
+        # accidental, misleadingly-worded false red) about a project this
+        # probe never actually looked at.
+        return CheckResult(
+            id="history", title="歷史版本", ok=False,
+            detail="沒有拿到使用者專案的資料夾路徑（facts 裡缺了 repo），"
+                   "不知道要檢查哪個專案，無法檢查。",
+        )
+    root = Path(repo)
     sample = int(facts.get("sample", 3))
     code, out, _ = run(["git", "rev-list", "HEAD"], cwd=root)
     if code != 0:

@@ -10,7 +10,21 @@ BUDGET_SECONDS = 30
 
 
 def probe(facts):
-    root = Path(facts.get("repo", "."))
+    repo = facts.get("repo")
+    if not repo:
+        # Falling back to "." used to mean "whatever directory this process
+        # happens to be running in" — per the skill's own instructions that
+        # is this plugin's own directory, not the user's project, once it
+        # has `cd`ed there to run `python3 -m checks.collect`. A missing
+        # `repo` is the skill failing to do its job, not a fact about the
+        # user's project, and must not silently turn into checking the
+        # wrong one.
+        return CheckResult(
+            id="suite", title="測試", ok=False,
+            detail="沒有拿到使用者專案的資料夾路徑（facts 裡缺了 repo），"
+                   "不知道要檢查哪個專案，無法檢查。",
+        )
+    root = Path(repo)
     runner = root / "scripts" / "run_tests.sh"
     if not runner.exists():
         return CheckResult(

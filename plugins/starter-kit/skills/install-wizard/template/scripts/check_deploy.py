@@ -11,6 +11,18 @@ from pathlib import Path
 
 TEMPLATE_DEFAULT_KEY = "django-insecure-CHANGE-ME"
 
+# Mirrors Django's own security.W009 check exactly (see `_check_secret_key`
+# in django/core/checks/security/base.py): a key must be at least this many
+# characters long and use at least this many distinct characters, and must
+# not carry Django's own auto-generated prefix. `manage.py check --deploy`
+# runs right after this script in the same CI job — if the two rules do not
+# agree, one guard says the key is fine while the other fails the build for
+# the exact same key, which is worse than either guard alone: whoever reads
+# the log has no way to tell which one to believe.
+SECRET_KEY_MIN_LENGTH = 50
+SECRET_KEY_MIN_UNIQUE_CHARACTERS = 5
+SECRET_KEY_INSECURE_PREFIX = "django-insecure-"
+
 
 def problems(settings):
     """Every reason this configuration must not go to production."""
@@ -33,8 +45,18 @@ def problems(settings):
         key = ""
     if not key:
         found.append("SECRET_KEY 是空的。這把鑰匙用來簽登入狀態，沒有它任何人都能偽造登入。")
-    elif key == TEMPLATE_DEFAULT_KEY or key.startswith("django-insecure-"):
+    elif key == TEMPLATE_DEFAULT_KEY or key.startswith(SECRET_KEY_INSECURE_PREFIX):
         found.append("SECRET_KEY 還是樣板的預設值。這個值是公開的，等於沒有鎖。")
+    elif (
+        len(key) < SECRET_KEY_MIN_LENGTH
+        or len(set(key)) < SECRET_KEY_MIN_UNIQUE_CHARACTERS
+    ):
+        found.append(
+            f"SECRET_KEY 太短或字元種類太少（Django 要求至少 {SECRET_KEY_MIN_LENGTH} 個字元、"
+            f"至少 {SECRET_KEY_MIN_UNIQUE_CHARACTERS} 種不同字元）。這裡沒過的話，"
+            "`manage.py check --deploy` 也一定會用同一個原因（security.W009）擋下來，"
+            "所以現在先在這裡改好，換一把更長、更隨機的鑰匙。"
+        )
     hosts = list(getattr(settings, "ALLOWED_HOSTS", []))
     if not hosts:
         found.append("ALLOWED_HOSTS 是空的，網站會拒絕所有連線。")
