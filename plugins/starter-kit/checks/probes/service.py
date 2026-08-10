@@ -5,6 +5,22 @@ from ..model import CheckResult
 TEMPLATE_DEFAULT_KEY = "django-insecure-CHANGE-ME"
 
 
+def _status_code(status):
+    """`status` as an int, or None if it is missing or not a status code.
+
+    The skill's own instructions tell Claude to get this value from
+    `curl -w '%{http_code}'`, which prints a string ("200"), not an int.
+    Comparing that string against the int 200 with `!=` is always true,
+    so every successful probe was being reported as broken. Accept either
+    shape the same way; anything that is not a whole number (empty, "連不
+    上", None) stays None so it still reads as "can't reach it".
+    """
+    try:
+        return int(status)
+    except (TypeError, ValueError):
+        return None
+
+
 def probe(facts):
     endpoints = facts.get("endpoints", {})
     env = facts.get("prod_env", {})
@@ -12,7 +28,7 @@ def probe(facts):
     hints = []
     for name in ("staging", "prod"):
         status = endpoints.get(name)
-        if status != 200:
+        if _status_code(status) != 200:
             problems.append(f"{name} 回 {status or '連不上'}，不是 200。")
     if env.get("DJANGO_DEBUG") == "1":
         problems.append(
