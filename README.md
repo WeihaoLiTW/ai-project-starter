@@ -27,13 +27,31 @@
 - 不是 Claude API 的技術文件。要查 API 請看官方文件
 - 不談進階 agent 架構、多 agent 協作、或 prompt engineering 的理論
 
+## 這個 repo 同時是什麼
+
+這個 repo 有兩個身分：
+
+1. **一份教學**（上面「這是什麼」講的內容）。
+2. **一個 Claude plugin marketplace** —— `.claude-plugin/marketplace.json` 底下
+   掛了一個叫 `starter-kit` 的 plugin，貼一段開場白、裝上這個 plugin，就能讓
+   Claude 帶你把整個環境（GitHub、Zeabur、Django 專案骨架）裝起來。plugin 本身
+   在 `plugins/starter-kit/`。
+
+## 從這裡開始
+
+- **要開始裝環境**：先讀
+  `docs/onboarding/kickoff-prompt.md` —— 裡面是要複製貼給 Claude 的那段話。
+  照著貼完之後，接下來每一步要看到什麼畫面、出錯了怎麼辦，都寫在
+  `docs/onboarding/walkthrough.md` 裡。
+- **想知道這整套東西為什麼是這樣設計**：
+  `docs/superpowers/specs/2026-08-08-starter-kit-design.md` 是完整的設計 spec，
+  含已知限制清單與每個技術決策的取捨紀錄（ADR）。
+
 ## Roadmap
 
-以下章節皆為**未開始**，內容會逐步補上：
+環境包（plugin 骨架、三個保命繩 hook、Django 樣板、部署與備份、九項健檢、
+開場白與走查文件）已經完成，見上面「從這裡開始」。之後的方向：
 
-- [ ] 未開始 — 第 0 章：在開始之前，你該有什麼心理準備
-- [ ] 未開始 — 第 1 章：安裝與設定，一步一步來
-- [ ] 未開始 — 第 2 章：你的第一個專案
-- [ ] 未開始 — 第 3 章：把想法講成 AI 聽得懂的需求
-- [ ] 未開始 — 第 4 章：做壞了怎麼辦，怎麼回到上一步
-- [ ] 未開始 — 第 5 章：非技術者的工具箱
+- [ ] 未開始 — 拿環境包做出第一個真的服務（例如排班系統），驗證「環境備妥」
+  之後接下來怎麼跟 Claude 把模糊的想法變成能用的東西
+- [ ] 未開始 — 更多非技術者能直接用的工具（Excel 報表 skill 等，目前列在 v1.1）
