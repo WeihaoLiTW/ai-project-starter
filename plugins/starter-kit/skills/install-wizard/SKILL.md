@@ -40,16 +40,32 @@ Zeabur 的錯誤訊息說不清楚原因，所以順序錯了他會卡死在一�
    $4/月），這是實測跑得動的規格。
 6. **建立專案** —— 把這個 skill 目錄底下 `template/` 的東西複製到他的工作資料夾。
    這一步你直接用工具做，不用叫他手動複製。
-7. **產生密鑰** —— 用 `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
+7. **裝相依套件** —— 樣板需要的程式庫（Django 等）還沒裝，這台機器上不會自動裝好。
+   沒裝這一步，之後每一輪對話結束測試都會失敗——但失敗原因是「套件沒裝」，不是
+   程式碼真的壞了，看起來卻一樣是紅燈，會讓人誤以為剛剛的改動出了問題。在專案
+   資料夾裡跑 `python3 -m pip install -r requirements.lock.txt`（鎖定版本的那份
+   清單，跟 CI 用的是同一份，裝出來的版本才會跟 CI 一致）。
+8. **產生密鑰** —— 用 `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
    產一組 `DJANGO_SECRET_KEY`，設進 Zeabur 的環境變數。**不要寫進任何檔案。**
-8. **接上部署** —— `develop` 分支接 staging，`main` 分支接 prod。
-9. **抄下兩組 ID** —— 開啟正式環境那個服務的頁面，從網址列抄下服務 ID 與
-   環境 ID。**CLI 沒有任何指令列得出環境 ID**，只能從網址抓，所以這一步不能跳。
-10. **備份** —— 把這個 skill 目錄底下 `backup-repo/backup.yml` 放進私有 repo 的
+9. **接上部署** —— `develop` 分支接 staging，`main` 分支接 prod。
+10. **抄下兩組 ID** —— 開啟正式環境那個服務的頁面，從網址列抄下服務 ID 與
+    環境 ID。**CLI 沒有任何指令列得出環境 ID**，只能從網址抓，所以這一步不能跳。
+11. **設定 code repo 的部署安全變數** —— code repo 的 GitHub Actions 裡有一個
+    「deploy-safety」檢查，會確認正式環境的設定安不安全，需要兩個值才能跑：
+    `DJANGO_SECRET_KEY`（跟第 8 步產生的是同一組，設成 secret，任何人都看不到）
+    跟 `DJANGO_ALLOWED_HOSTS`（正式環境的網址，設成 variable，可以被看到）。
+    網址是安裝時自己取的名字，這個專案沒有地方會記下來，問他自己最快。跑：
+
+        gh secret set DJANGO_SECRET_KEY --repo <帳號>/<code repo> --body "<第 8 步產生的那組>"
+        gh variable set DJANGO_ALLOWED_HOSTS --repo <帳號>/<code repo> --body "<正式環境網址>"
+
+    沒設這兩個值，`deploy-safety` 那個檢查會一直紅燈——它的錯誤訊息會講清楚是
+    這個原因，不用緊張，但也不要跟他說「裝好了」，先把這兩個值補上。
+12. **備份** —— 把這個 skill 目錄底下 `backup-repo/backup.yml` 放進私有 repo 的
     `.github/workflows/`，設定 `ZEABUR_API_TOKEN` 這個 secret，以及
-    `ZEABUR_SERVICE_ID`、`ZEABUR_ENV_ID`、`CODE_REPO` 三個變數（用第 9 步抄下來的
+    `ZEABUR_SERVICE_ID`、`ZEABUR_ENV_ID`、`CODE_REPO` 三個變數（用第 10 步抄下來的
     兩組 ID）。`backup-repo/README.md` 也一起放進私有 repo。
-11. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
+13. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
     沒綠的項目照它給的說法處理，不要在還有紅燈的時候就跟他說裝好了。
 
 ## Zeabur 怎麼操作
