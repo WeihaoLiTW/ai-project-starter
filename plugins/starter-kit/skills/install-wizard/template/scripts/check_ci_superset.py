@@ -18,6 +18,8 @@ from pathlib import Path
 
 ENTRYPOINT = "scripts/run_tests.sh"
 TEST_COMMAND = re.compile(r"^\s*(?:-\s*run:\s*)?(.*\bpytest\b.*)$")
+SCRIPT_PATH = re.compile(r"scripts/[\w.\-/]+\.(?:py|sh)")
+JOB_KEY = re.compile(r"^  [A-Za-z0-9_-]+:\s*$")
 
 
 def _is_comment_line(line):
@@ -49,6 +51,58 @@ def stray_test_commands(workflow):
     return stray
 
 
+def first_job_text(workflow):
+    """The text of just the first job block (2-space-indented key directly
+    under `jobs:`), up to but not including the next one.
+
+    This repository's first job (`test`) is the one that is supposed to
+    mirror `scripts/run_tests.sh` exactly on every push. A later job (e.g.
+    `deploy-safety`) legitimately needs things a local run cannot provide —
+    real deployment secrets — so it is deliberately out of scope for
+    `stray_script_commands` below; scoping by job avoids flagging a script
+    that only that later job has a reason to run. Still line matching, not
+    a YAML parser: it only recognizes this repository's own workflow shape.
+    """
+    lines = workflow.splitlines()
+    start = None
+    end = len(lines)
+    for i, line in enumerate(lines):
+        if JOB_KEY.match(line):
+            if start is None:
+                start = i
+            else:
+                end = i
+                break
+    return "\n".join(lines[start:end]) if start is not None else workflow
+
+
+def stray_script_commands(job_text, local_script_text):
+    """CI-only invocations of another script under `scripts/`, within a
+    single job's text.
+
+    `stray_test_commands` above only recognizes a bare `pytest` call as a
+    second test path. A CI step that runs some other script under
+    `scripts/` directly — bypassing the entrypoint the same way — is the
+    same class of drift (a check that exists only in CI, so a green run
+    locally proves nothing about it) but was invisible to that regex. This
+    flags any `scripts/*.py` or `scripts/*.sh` reference on a non-comment
+    line that is not the entrypoint itself and does not also appear
+    somewhere inside `scripts/run_tests.sh`'s own text — a script that
+    entrypoint already runs is covered locally, no matter how many times
+    or where else it is also invoked.
+    """
+    stray = []
+    for line in job_text.splitlines():
+        if _is_comment_line(line):
+            continue
+        for match in SCRIPT_PATH.findall(line):
+            if match == ENTRYPOINT or match in local_script_text:
+                continue
+            if match not in stray:
+                stray.append(match)
+    return stray
+
+
 def main():
     workflow = Path(".github/workflows/tests.yml")
     if not workflow.exists():
@@ -62,6 +116,14 @@ def main():
     if stray:
         print("CI 裡有另一條測試路徑，本機重現不了它的紅：")
         for item in stray:
+            print(f"  - {item}")
+        return 1
+    entrypoint_path = Path(ENTRYPOINT)
+    local_script_text = entrypoint_path.read_text("utf-8") if entrypoint_path.exists() else ""
+    stray_scripts = stray_script_commands(first_job_text(text), local_script_text)
+    if stray_scripts:
+        print("CI 的第一個 job 裡直接呼叫了另一個腳本，本機的 run_tests.sh 沒有走它，重現不了它的紅：")
+        for item in stray_scripts:
             print(f"  - {item}")
         return 1
     print("CI 跟本機跑的是同一組測試。")

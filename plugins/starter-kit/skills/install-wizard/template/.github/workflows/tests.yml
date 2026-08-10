@@ -21,11 +21,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.lock.txt
       - name: Run the tests
+        # scripts/run_tests.sh now runs pytest, the glossary check, and the
+        # CI-superset check itself, so this one step is everything local
+        # runs too — there is no separate CI-only check to drift out of
+        # sync with what `sh scripts/run_tests.sh` does on your machine.
         run: sh scripts/run_tests.sh
-      - name: Check the glossary
-        run: python3 scripts/check_glossary.py
-      - name: Check CI and local agree
-        run: python3 scripts/check_ci_superset.py
 
   deploy-safety:
     # A red X here right after the template is created almost always means

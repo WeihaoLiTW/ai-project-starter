@@ -3,7 +3,12 @@ import sys
 from conftest import TEMPLATE
 
 sys.path.insert(0, str(TEMPLATE / "scripts"))
-from check_ci_superset import stray_test_commands, uses_shared_entrypoint
+from check_ci_superset import (
+    first_job_text,
+    stray_script_commands,
+    stray_test_commands,
+    uses_shared_entrypoint,
+)
 
 
 def test_ci_runs_the_same_entrypoint_as_local():
@@ -51,6 +56,74 @@ def test_pytest_mentioned_only_in_a_comment_is_not_a_stray_command():
     )
 
     assert stray_test_commands(workflow) == []
+
+
+def test_the_shipped_workflow_calls_the_glossary_and_superset_checks_only_through_run_tests_sh():
+    """回歸測試：`check_glossary.py` 跟 `check_ci_superset.py` 曾經是 CI 才有、
+    本機 `run_tests.sh` 沒有的兩個額外檢查（Important 8 修的那個問題）。這裡
+    釘住修好之後的狀態：CI 的第一個 job（`test`）沒有繞過 `run_tests.sh` 直接
+    再呼叫其他 scripts/ 底下的腳本。"""
+    workflow = (TEMPLATE / ".github" / "workflows" / "tests.yml").read_text("utf-8")
+    local_script = (TEMPLATE / "scripts" / "run_tests.sh").read_text("utf-8")
+
+    assert stray_script_commands(first_job_text(workflow), local_script) == []
+
+
+def test_a_ci_only_script_call_outside_run_tests_sh_is_flagged():
+    """`test` job 裡直接呼叫了一個 `run_tests.sh` 沒有走的腳本——這是 CI 多跑
+    一項本機重現不了的檢查，要被抓出來，不能靠只認 pytest 的正規表達式漏掉。"""
+    workflow = (
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: sh scripts/run_tests.sh\n"
+        "      - run: python3 scripts/check_something_extra.py\n"
+        "  deploy-safety:\n"
+        "    steps:\n"
+        "      - run: python3 scripts/check_deploy.py\n"
+    )
+    local_script = "#!/bin/sh\npython3 -m pytest tests/\n"
+
+    result = stray_script_commands(first_job_text(workflow), local_script)
+
+    assert result == ["scripts/check_something_extra.py"]
+
+
+def test_a_script_only_the_deploy_safety_job_needs_is_not_flagged():
+    """`deploy-safety` job 需要真的部署密鑰才能跑，本機重現不了本來就是預期
+    行為（跟 glossary／superset 那兩個不需要密鑰的檢查不是同一類問題）——
+    這個檢查只看第一個 job，不該把 `deploy-safety` 專屬的腳本也算成 stray。"""
+    workflow = (
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: sh scripts/run_tests.sh\n"
+        "  deploy-safety:\n"
+        "    steps:\n"
+        "      - run: python3 scripts/check_deploy.py\n"
+    )
+    local_script = "#!/bin/sh\npython3 -m pytest tests/\n"
+
+    result = stray_script_commands(first_job_text(workflow), local_script)
+
+    assert result == []
+
+
+def test_a_script_call_also_present_in_run_tests_sh_is_not_flagged():
+    """腳本已經在 `run_tests.sh` 裡跑過了，CI 裡另外再呼叫一次同一個腳本
+    不算 stray——本機已經涵蓋這個檢查，不會有「本機重現不了 CI 的紅」的問題。"""
+    workflow = (
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: sh scripts/run_tests.sh\n"
+        "      - run: python3 scripts/check_glossary.py\n"
+    )
+    local_script = "#!/bin/sh\npython3 -m pytest tests/\npython3 scripts/check_glossary.py\n"
+
+    result = stray_script_commands(first_job_text(workflow), local_script)
+
+    assert result == []
 
 
 def test_pytest_mentioned_only_in_a_step_name_is_still_flagged():
