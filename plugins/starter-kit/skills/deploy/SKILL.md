@@ -22,22 +22,35 @@ description: 把改好的東西送上線 —— 先上測試環境看，確認�
 問了也白問。
 
 先跑 `git branch --show-current` 看現在在哪，`git branch --list develop`
-看 `develop` 存不存在，再照情況處理：
+看 `develop` 存不存在——這兩件事只在這裡確認一次，後面提到「切到
+develop」都照這個結果走：不存在就 `git checkout -b develop`，已經存在
+就 `git checkout develop`，不再重新判斷一次。確認完再照情況處理：
 
-- **`develop` 不存在**：`git checkout -b develop` 直接建一條，從現在的
-  位置分出去。之後每次上線都用這條，不用再建第二次。
+- **`develop` 不存在，且 `main` 上沒有其他待處理的改動或 commit**：切到
+  develop（`git checkout -b develop`，從現在的位置分出去）。之後每次上線
+  都用這條，不用再建第二次。
 - **已經站在 `develop`**：不用動，直接往下走流程第 3 步。
 - **站在 `main` 上，且有還沒 commit 的改動**：這些改動是要先上 staging
-  看的，不能直接留在 `main` 上。`git stash` 存起來 →
-  `git checkout -b develop`（`develop` 已存在就用 `git checkout develop`）
-  → `git stash pop` 把改動接回來 → 在 `develop` 上 commit。**不要在
-  `main` 上 commit** —— `main` 只留給「已經上過 staging、使用者確認過」
-  的版本。
-- **改動已經 commit 在 `main` 上，但還沒 push 到遠端**：把這個 commit
-  搬到 `develop`（`develop` 不存在就 `git branch develop main`；已存在
-  就 `git checkout develop && git merge main`），再把 `main` 退回上一個
-  遠端已知的位置（`git reset --hard origin/main`）。這樣 `main` 不會提早
-  帶著還沒被使用者看過的改動跑出去。
+  看的，不能直接留在 `main` 上。`git stash` 存起來 → 切到 develop（依照
+  上面的判斷） → `git stash pop` 把改動接回來 → 在 `develop` 上 commit。
+  **不要在 `main` 上 commit** —— `main` 只留給「已經上過 staging、使用者
+  確認過」的版本。
+- **改動已經 commit 在 `main` 上，但還沒 push 到遠端**：這個 commit 要搬
+  到 `develop`，但 `main` 上很可能還有更新的、還沒 commit 的改動——他不
+  會特別講「這是下一批」，commit 一次之後接著往下改、沒有再 commit，是
+  很常見的狀態。如果不先檢查就直接 `git reset --hard origin/main`，這些
+  沒 commit 的東西會被整個清空、救不回來，而且他不會知道發生了什麼事。
+  所以動 `main` 之前一定要先確認乾不乾淨：
+  1. `git status --porcelain` 看有沒有還沒 commit 的東西，有就先
+     `git stash` 存起來。
+  2. 切到 develop（依照上面的判斷） → `git merge main` 把這個 commit
+     接上去。
+  3. `git checkout main` 切回來，`git reset --hard origin/main` 把
+     `main` 退回上一個遠端已知的位置。這樣 `main` 不會提早帶著還沒被
+     使用者看過的改動跑出去。
+  4. 如果第 1 步有 stash，`git stash pop` 接回來——這批改動比剛才搬到
+     develop 的那個 commit 更新，是要留在 `main` 上繼續改的，不能跟著
+     被清掉。
 - **改動已經 commit 也 push 到遠端 `main` 了**：這已經算是上了正式版，
   不是「站錯分支」能補救的範圍——不要假裝沒發生過、也不要事後偷偷改
   `main` 的歷史。跟他說清楚現在正式版已經帶著這個改動，接下來要做的是
