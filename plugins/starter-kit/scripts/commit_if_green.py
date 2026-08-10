@@ -30,15 +30,63 @@ COULD_NOT_RUN = {
     124: "測試跑了太久，超過時間限制被中斷了，沒有跑出結果。",
 }
 
+# `python3 -m pytest` when `pytest` (or `django`, or any other module the
+# suite needs) is not installed does NOT raise the OSError that produces
+# the 127 above — the interpreter itself starts fine, so subprocess never
+# sees a launch failure. Python's own `-m` machinery prints exactly one
+# bare line to stderr and exits 1: the same code a real test failure uses.
+# The exit code alone cannot tell these apart; only the text can.
+#
+# The tell is the *shape* of that line: `<path-to-python>: No module named
+# <bareword>`, with no quotes around the module name and no preceding
+# "Traceback (most recent call last):". A module a test or app file itself
+# fails to import shows up quoted, inside a full traceback
+# (`ModuleNotFoundError: No module named 'foo'`) — that IS a real
+# regression from this turn's change and must still be reported as a test
+# failure, not excused as an environment problem.
+RUNNER_COULD_NOT_START_PATTERNS = [
+    re.compile(r"^\S+:\s*No module named [A-Za-z_][\w.]*\s*$", re.MULTILINE),
+    re.compile(r"command not found", re.IGNORECASE),
+    re.compile(r":\s*not found\s*$", re.MULTILINE),
+    re.compile(r"is not recognized as an internal or external command", re.IGNORECASE),
+]
+
+# pytest's own exit code for "collected zero tests" — distinct from both a
+# real pass (0) and a real failure (1/2). This template ships with a green
+# baseline precisely so a project should never legitimately land here; if
+# it does, the test files most likely got deleted or moved out of the path
+# pytest looks in, and someone needs to see that rather than a placeholder
+# claiming "not sure which test broke" for a run that never found a test
+# to break in the first place.
+NO_TESTS_COLLECTED = 5
+
+
+def runner_could_not_start(out, err):
+    """The offending line if the output shows the runner never got going,
+    or None if it does not. See RUNNER_COULD_NOT_START_PATTERNS above for
+    why this needs to inspect text and cannot rely on the exit code alone.
+    """
+    combined = out + "\n" + err
+    for pattern in RUNNER_COULD_NOT_START_PATTERNS:
+        match = pattern.search(combined)
+        if match:
+            line_start = combined.rfind("\n", 0, match.start()) + 1
+            line_end = combined.find("\n", match.end())
+            if line_end == -1:
+                line_end = len(combined)
+            return combined[line_start:line_end].strip()
+    return None
+
 
 def failure_reason(code, out, err):
     """The message to show when the test runner exits non-zero.
 
-    Two different situations read the same to someone who cannot inspect a
-    stack trace, but are not the same thing, so they get different
-    messages: the environment could not run the tests at all (see
-    COULD_NOT_RUN above — not caused by this turn's changes), versus the
-    tests actually ran and something in them is broken.
+    Three different situations all look the same to someone who cannot
+    inspect a stack trace or an exit code, but they are not the same
+    thing, so each gets its own message: the environment could not run
+    the tests at all (not caused by this turn's changes), the environment
+    ran but found nothing to run (also not a pass or a fail), and the
+    tests actually ran with something in them broken.
     """
     if code in COULD_NOT_RUN:
         return (
@@ -46,6 +94,24 @@ def failure_reason(code, out, err):
             f"是環境本身跑不起來測試。{COULD_NOT_RUN[code]}\n"
             "改動都還在，沒有東西不見，把環境修好之後會自動存檔。"
         )
+
+    evidence = runner_could_not_start(out, err)
+    if evidence:
+        return (
+            "沒辦法執行測試，所以這一輪的改動還沒有存檔——這不是這次改動造成的，"
+            "是環境本身缺了跑測試需要的東西（例如某個套件還沒裝好）。"
+            f"實際訊息：\n{evidence}\n"
+            "改動都還在，沒有東西不見，把缺的東西裝好之後會自動存檔。"
+        )
+
+    if code == NO_TESTS_COLLECTED:
+        return (
+            "這一輪一個測試都沒有跑到——不是通過，也不是失敗，是「根本沒找到測試可以跑」。"
+            "這個專案原本是帶著會通過的測試出貨的，正常不該發生這種事，"
+            "很可能是測試檔案被刪掉了或移到別的地方去了，需要有人看一下發生了什麼事。\n"
+            "改動都還在，還沒有存檔，等看得到測試真的有在跑再說。"
+        )
+
     names = [name for _, name in FAILED_TEST.findall(out + err)]
     if names:
         detail = f"壞掉的是：{', '.join(names[:5])}"

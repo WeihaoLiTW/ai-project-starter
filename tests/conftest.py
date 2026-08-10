@@ -44,15 +44,48 @@ def repo(tmp_path):
     return root
 
 
-def run_hook(script_name, payload, cwd):
-    """用 hook 的實際介面呼叫它：payload 走 stdin，結果走 stdout。"""
+def run_hook(script_name, payload, cwd, env=None):
+    """用 hook 的實際介面呼叫它：payload 走 stdin，結果走 stdout。
+
+    `env`, if given, is merged on top of the current environment — used by
+    tests that need the subprocess to see a different `PATH` or `PYTHON`
+    than this test process itself has.
+    """
+    run_env = dict(os.environ)
+    if env:
+        run_env.update(env)
     proc = subprocess.run(
         [sys.executable, str(PLUGIN / "scripts" / script_name)],
         input=json.dumps(payload), cwd=cwd,
         capture_output=True, text=True, timeout=120,
+        env=run_env,
     )
     out = proc.stdout.strip()
     return proc.returncode, (json.loads(out) if out else {}), proc.stderr
+
+
+@pytest.fixture(scope="session")
+def venv_without_pytest(tmp_path_factory):
+    """A real virtualenv that has a working `python3` but no `pytest`.
+
+    Session-scoped and built once with `--without-pip` (nothing installs
+    into it, so there is nothing to speed up by recreating it per test):
+    this is the actual, most common half-finished install this project's
+    audience hits — a virtualenv was created, but the install step that
+    puts `pytest` in it never ran or failed silently.
+
+    Built by shelling out to the system `python3`, not by using the
+    `venv` module against `sys.executable`: this test process itself runs
+    inside this repo's own `.venv`, and a venv created *from* a venv can
+    end up with a broken `libpython` reference — a dylib-loading crash,
+    not the "No module named" text this fixture exists to produce.
+    """
+    venv_dir = tmp_path_factory.mktemp("no-pytest-venv") / "venv"
+    subprocess.run(
+        ["python3", "-m", "venv", str(venv_dir), "--without-pip"],
+        check=True, capture_output=True, text=True,
+    )
+    return venv_dir / "bin"
 
 
 @pytest.fixture

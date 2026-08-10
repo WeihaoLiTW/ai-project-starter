@@ -284,6 +284,52 @@ def test_a_check_failure_with_no_named_test_shows_the_real_output(repo):
     assert "看不出是哪一個）" not in reason
 
 
+def test_missing_pytest_is_reported_as_could_not_run_not_as_a_test_failure(
+    repo, venv_without_pytest
+):
+    """真實情況：虛擬環境裡有 python，但 pytest 還沒裝（例如安裝步驟只做了
+    一半）。`python3 -m pytest` 這時候是直譯器自己找不到模組，離開碼是 1，
+    跟「測試真的跑了、真的失敗」用的是同一個離開碼——如果只靠離開碼判斷
+    「跑不起來」，這個最常見的半調子安裝反而會被當成「這輪改動讓測試變
+    紅」，把裝機沒做完的問題栽到使用者這次的改動頭上。
+
+    這裡刻意不用「隨便一個不存在的指令」當替身：那只會證明離開碼 127 的
+    分支還在，證明不了離開碼 1 又同時是「跑不起來」的這個真正缺口有沒有
+    被補上。
+    """
+    (repo / "NOTES.txt").write_text("這輪有改動，才會觸發測試。\n", encoding="utf-8")
+    env = {"PATH": f"{venv_without_pytest}{os.pathsep}{os.environ['PATH']}"}
+
+    _, out, _ = run_hook(
+        "commit_if_green.py", {"stop_hook_active": False}, repo, env=env
+    )
+
+    assert out.get("decision") == "block"
+    reason = out["reason"]
+    assert "沒辦法執行測試" in reason
+    assert "測試沒過" not in reason
+    assert "pytest" in reason  # the actual interpreter message, not a placeholder
+
+
+def test_no_tests_collected_is_neither_a_pass_nor_a_failure(repo):
+    """真實情況：這一輪的改動剛好把唯一的測試檔案刪掉了。pytest 對「一個
+    測試都沒收集到」回傳離開碼 5——跟「有測試但失敗」的 1 不同，也跟
+    「環境根本跑不起來」的 127/124 不同，是第三種狀態。這個範本本來就是
+    帶著會通過的測試出貨的，照理不會走到這裡，所以這本身就是件需要被
+    看見的異常事，不能被硬套進「測試沒過，看不出是哪一個」這句話裡
+    （那句話在這裡沒有任何測試可指，只是空話）。
+    """
+    (repo / "tests" / "test_ok.py").unlink()
+
+    _, out, _ = run_hook("commit_if_green.py", {"stop_hook_active": False}, repo)
+
+    assert out.get("decision") == "block"
+    reason = out["reason"]
+    assert "沒找到測試" in reason or "沒有測試" in reason or "找不到測試" in reason
+    assert "測試沒過" not in reason
+    assert "看不出是哪一個" not in reason
+
+
 def test_missing_test_runner_names_the_path_on_stderr(repo):
     """`scripts/run_tests.sh` 不存在時（裝壞了的安裝），不能安靜地什麼都
     不做——stderr 要點名它找的是哪個路徑，裝機的人才查得出來。"""
