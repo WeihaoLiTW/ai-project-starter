@@ -48,8 +48,8 @@
 
    | 陷阱 | 會發生什麼 | 怎麼避開 |
    |---|---|---|
-   | 用 `.exe` 安裝檔裝 | Claude Desktop 裝得起來、看起來正常，但完全沒有 Cowork | **一定要用 `.msix` 安裝檔**，不是 `.exe` |
-   | 沒有系統管理員權限 | 一樣裝得起來、看起來正常，但沒有 Cowork | 用系統管理員權限重新安裝，或請有權限的人幫你裝 |
+   | 用 `.exe` 安裝檔裝 | Claude Desktop 裝得起來、看起來正常，但完全沒有 Cowork | **一定要用 `.msix` 安裝檔**，不是 `.exe`。`claude.com/download` 頁面上的按鈕不分格式，直接用下面這兩個連結下載（依你電腦的處理器選一個）：[Windows x64 (.msix)](https://claude.ai/api/desktop/win32/x64/msix/latest/redirect)、[Windows ARM64 (.msix)](https://claude.ai/api/desktop/win32/arm64/msix/latest/redirect) |
+   | 沒有系統管理員權限 | 一樣裝得起來、看起來正常，但沒有 Cowork | 用系統管理員權限重新安裝，或請有權限的人幫你裝——沒有管理員權限，這台機器就是裝不出有 Cowork 的版本，這不是你哪裡做錯，是這台機器目前的限制，找有管理員權限的人（例如公司的 IT）幫你裝 |
 
    還需要 Virtual Machine Platform 這個 Windows 功能（家用版也內建，不用額外買
    專業版）。
@@ -295,6 +295,13 @@ Claude 會跑一輪環境健檢，**九項全部變綠才算裝完**。有紅燈
 - Zeabur 主控台網址帶著服務 ID 與環境 ID 的結構（`projects/<id>/services/<id>?envID=<id>`）
 - `ZEABUR_API_TOKEN` 的取得位置（Zeabur 主控台 Settings → API Keys）
 - staging／prod 網址在 Zeabur 介面的哪裡看（該服務頁面的 Domains 分頁）
+- Windows `.msix` 的直接下載連結，以及沒有系統管理員權限會裝出不含 Cowork 版本
+  這件事——查 Anthropic 官方的 Windows 部署文章（
+  https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows ）
+  確認的，該文章原文是：「For individual installations with full feature
+  support including Claude Cowork, administrator privileges are required.
+  Users without admin access can still install Claude, but Cowork on desktop
+  will not be available.」
 
-如果你走查這份文件時，發現上面這四項其中之一跟真實畫面不一樣，那正是這份文件
+如果你走查這份文件時，發現上面這五項其中之一跟真實畫面不一樣，那正是這份文件
 目前最該補強的地方——記下來，別自己在心裡默默修正過去。

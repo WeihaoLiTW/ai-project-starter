@@ -40,8 +40,10 @@
 ## 從這裡開始
 
 - **要開始裝環境**：先讀
-  `docs/onboarding/kickoff-prompt.md` —— 裡面是要複製貼給 Claude 的那段話。
-  照著貼完之後，接下來每一步要看到什麼畫面、出錯了怎麼辦，都寫在
+  `docs/onboarding/walkthrough.md`，從第 0 步（裝對版本的 Claude Desktop）、
+  第 1 步（切到 Cowork、確認本機模式）開始做。走到第 2 步時，文件會請你打開
+  `docs/onboarding/kickoff-prompt.md` ，複製貼給 Claude 的那段話就在裡面。貼完
+  之後，接下來每一步要看到什麼畫面、出錯了怎麼辦，都接著寫在
   `docs/onboarding/walkthrough.md` 裡。
 - **想知道這整套東西為什麼是這樣設計**：
   `docs/superpowers/specs/2026-08-08-starter-kit-design.md` 是完整的設計 spec，
