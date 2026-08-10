@@ -1,5 +1,12 @@
 .env
 .env.*
+# .env.example is the conventional, version-controlled template documenting
+# which environment variables this project needs — it is not a real secret,
+# and guard_secrets.py/_shared.py specifically allow writing it (with
+# content inspection to catch a real key pasted in by mistake). Without
+# this negation, the .env.* pattern above ignores it too, silently
+# untracking the one file those guards work to keep in git.
+!.env.example
 *.sqlite3
 reports/
 staticfiles/

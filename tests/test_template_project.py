@@ -97,6 +97,24 @@ def test_database_file_lives_under_a_mounted_volume():
     )
 
 
+def test_env_example_is_not_ignored_by_the_templates_own_gitignore(tmp_path):
+    """`.gitignore` 裡的 `.env.*` 會連 `.env.example` 一起擋掉，但 `.env.example`
+    是慣例上該進版控的範本檔——`guard_secrets.py`／`_shared.py` 特別花力氣
+    允許寫這個檔名，如果 `.gitignore` 把它擋掉，那些力氣全部白費，這個檔案
+    永遠進不了版控，使用者也不會發現。"""
+    project = tmp_path / "proj"
+    shutil.copytree(TEMPLATE, project)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project, check=True)
+    (project / ".env.example").write_text("DJANGO_SECRET_KEY=\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["git", "check-ignore", ".env.example"],
+        cwd=project, capture_output=True, text=True,
+    )
+
+    assert result.returncode == 1, "「.env.example」被 .gitignore 擋掉了"
+
+
 def test_the_two_environments_do_not_share_a_volume():
     """staging 與 prod 各自宣告獨立的 volume id,不會共用同一份資料。
 
