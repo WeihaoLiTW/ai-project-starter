@@ -164,9 +164,18 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 
 全部條件週日前可完成,不需等待真實時間流逝。
 
-## 待確認項(請在 review 頁框選留言)
+## 週日前置動作(已定案的前提)
 
-1. **學員裝 plugin 的來源 repo(唯一未決前提)**:學員靠貼一段 prompt,去「一個網路上的公開清單」把 starter-kit 裝到自己的 Cowork。那個清單就是 GitHub 上的 `WeihaoLiTW/ai-project-starter` 這個 repo。**已查證(2026-08-14):此 repo 目前是 PRIVATE(私有),你是 ADMIN(有 push 權)。** 私有代表**學員的 Cowork 抓不到、裝不了**。因此週日前必須:(a) 把這個 repo 改成 **public(公開)**,或改用別的散布方式;(b) 把「本機檔位」的改動推上去。改 public 會讓 repo 全部內容對外公開 —— 動作前先確認裡面沒有不能公開的東西(帳密、內部資訊)。push 權已確認、非阻塞;卡點是 (a) 公開 與 (b) 本機檔位趕不趕得及。
+學員自助安裝要成立,週日前必須完成兩件事:
+
+1. **把 `WeihaoLiTW/ai-project-starter` 改成 public(公開)。** 已查證(2026-08-14):
+   此 repo 目前是 PRIVATE、你是 ADMIN(有 push 權)。私有時學員的 Cowork 抓不到、
+   裝不了 plugin。**這個對外公開的動作由你自己在 GitHub 設定按**(屬對外發布,不代做);
+   按之前先確認 repo 內沒有不能公開的東西(帳密、內部資訊)。
+2. **把「本機檔位」的改動 push 到那個(已公開的)repo。** 學員裝到的是這個 repo 的
+   內容,所以本機檔位必須先在裡面。push 權已確認。
+
+兩件都完成,學員路徑才能在乾淨帳號上跑通(成功條件 4-6)。
 
 ## 決策紀錄(供 plan 階段歸檔 ADR)
 
