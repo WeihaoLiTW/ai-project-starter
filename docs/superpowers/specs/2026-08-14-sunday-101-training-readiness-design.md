@@ -166,7 +166,7 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 
 ## 待確認項(請在 review 頁框選留言)
 
-1. **學員裝 plugin 的來源 repo(唯一未決,白話版)**:學員靠貼一段 prompt,去「一個網路上的公開清單」把 starter-kit 裝到自己的 Cowork。那個清單就是 GitHub 上的 `WeihaoLiTW/ai-project-starter` 這個 repo。要讓學員週日裝得到「本機檔位」,得同時滿足三件事:(a) 這個 repo 是**公開**的(否則學員的 Cowork 抓不到);(b) **你有權限把改動推上去**(push);(c) 本機檔位那段改動**趕得及在週日前推上去**。這三件現在都還沒確認,是學員路徑唯一的未決前提。
+1. **學員裝 plugin 的來源 repo(唯一未決前提)**:學員靠貼一段 prompt,去「一個網路上的公開清單」把 starter-kit 裝到自己的 Cowork。那個清單就是 GitHub 上的 `WeihaoLiTW/ai-project-starter` 這個 repo。**已查證(2026-08-14):此 repo 目前是 PRIVATE(私有),你是 ADMIN(有 push 權)。** 私有代表**學員的 Cowork 抓不到、裝不了**。因此週日前必須:(a) 把這個 repo 改成 **public(公開)**,或改用別的散布方式;(b) 把「本機檔位」的改動推上去。改 public 會讓 repo 全部內容對外公開 —— 動作前先確認裡面沒有不能公開的東西(帳密、內部資訊)。push 權已確認、非阻塞;卡點是 (a) 公開 與 (b) 本機檔位趕不趕得及。
 
 ## 決策紀錄(供 plan 階段歸檔 ADR)
 
