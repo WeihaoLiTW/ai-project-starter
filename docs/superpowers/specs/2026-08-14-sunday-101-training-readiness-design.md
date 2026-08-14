@@ -7,10 +7,8 @@
 一份**訓練備妥包**,讓主講者(你)在週日對 1-3 位非技術新手(101),辦一場半天的
 「安心用 AI 開發」訓練。所謂「備妥」= 三塊交付物在週日前各自備妥且驗過一次:
 
-1. **Demo run-of-show** —— 你在 Claude Code CLI 上,一條排練過、確定能跑的完整
-   開發 loop(含 dev→staging→prod),外加一支成功錄影當 fallback。
-2. **學員本機路徑** —— 學員在自己的 Cowork 上,現場貼一段 prompt 自助安裝,走到
-   「改→測→綠→commit→push→看 CI 綠」,全程不碰部署。
+1. **Demo run-of-show** —— 你在 Claude Code CLI 上,一條排練過、確定能跑的完整開發 loop(含 dev→staging→prod),外加一支成功錄影當 fallback。
+2. **學員本機路徑** —— 學員在自己的 Cowork 上,現場貼一段 prompt 自助安裝,走到「改→測→綠→commit→push→看 CI 綠」,全程不碰部署。
 3. **概念材料** —— 三個核心概念的 101 版講法,每個都釘到 demo 裡的一個時刻。
 
 交付物是「訓練站得住」,**不是**任何一個正式對外服務,也**不是** kit 的架構改造。
@@ -88,8 +86,7 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 - 1 機器 readiness check
 - 2 確認本機模式
 - 3 工作資料夾(Windows 的 `C:\Users\` 限制)
-- 4 GitHub:註冊/授權 + 建**一個公開的 code repo**(拿無限 CI)。**本機檔位不建私有
-  備份 repo。**
+- 4 GitHub:註冊/授權 + 建**一個公開的 code repo**(拿無限 CI)。**本機檔位不建私有備份 repo。**
 - 6 複製 template 到工作資料夾
 - 7 裝相依套件(`pip install -r requirements.lock.txt`)
 - push 到 GitHub → template 自帶的 `tests.yml` 自動觸發 → 學員看到 CI 綠
@@ -106,7 +103,10 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 部署者補 secret」行為(見 ADR-F)。
 
 **學員 kickoff prompt**:既有 `kickoff-prompt.md` 的變體,指向同一個 marketplace
-(`WeihaoLiTW/ai-project-starter`),但請 Claude 走「本機檔位」而非完整安裝。
+(`WeihaoLiTW/ai-project-starter`),但請 Claude 走「本機檔位」而非完整安裝。這是**一段
+自助跑完的長 prompt** —— 學員貼進自己的 Cowork,它邊跑邊帶學員設定好所需帳號(GitHub)
+與環境(工作資料夾、git、Django 骨架、套件),**跑完那個 folder 就 dev-ready、可直接
+開始開發**。不含 Zeabur、不含 Google。
 
 **微練習(≤10 分鐘)**:改一個指定字串 → 跑測試 → 綠 → commit。讓學員親手感受
 「改一點、測一下、綠了才存」的節奏。
@@ -123,10 +123,10 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 | 概念 | 101 講法 | demo 時刻 |
 |---|---|---|
 | **git = 隨時能倒帶** | 每存一次都是一個存檔點,而且每個存檔點都是「測試綠、確定能跑」的。壞了就回到上一個好的存檔點,不會回到半殘狀態。 | commit 那一步;`git log` 看到一串綠存檔點 |
-| **model 每次失憶不可怕** | AI 每次對話都像失憶,但需要的東西都不在它腦子裡、每次從外面重新載入:**記憶**在你的 repo(CONTEXT.md、ADR 檔),**能力**在 skill(可重用的技能),**對外連線**在 mcp(接外部工具的插頭)。三者都是「每次重讀」,所以失憶沒關係。(不要把 skill/mcp 講成「記憶」——它們是能力與連線,不是記事本。) | 開一個新 session,它「忘記」又讀 CONTEXT.md 接上 |
+| **model 每次都是重新開始** | 每次對話 AI 都從一張白紙開始 —— 它**不會**自動記得你之前講過、做過的事。學員最容易誤會的就是「Claude 會記住之前所有東西」,這一點要當場戳破。它有時看起來像記得,是因為你**刻意設計了東西讓它每次重讀**:資料夾規則(CLAUDE.md)、技能(skill)、以及 Claude 自帶的 memory 功能。其中最可靠、你看得到也改得到的是 repo 裡的檔案(CLAUDE.md / CONTEXT.md);自帶 memory 是黑盒子(看不到、不能編輯),別依賴它。 | 開一個新 session,它「忘記」→ 讀 CLAUDE.md / CONTEXT.md 才接上 |
 | **dev→staging→prod** | 先在自己電腦試(dev),對了推到一個給自己看的網站(staging),再對了才上真正給人用的(prod)。每一關都能先看再決定。 | demo 腳本裡 staging 先看 → 才 promote prod |
 
-**載體(待確認)**:建議一頁 handout + 直接用 repo 檔案當投影,不另做 slides(省時)。
+**載體**:做成清楚、視覺化、好懂的形式 —— slides,或互動式「teach-me」帶著走,**不要一大堆文字**。可用 `slides` skill 產出。
 
 每個技術名詞第一次出現都要有一句白話解釋(成功條件 7)。
 
@@ -135,53 +135,37 @@ staging + prod。好消息:ADR-4 那套「Zeabur 三路徑地獄」是 **Cowork 
 ### Demo
 
 1. 你 CLI 上的 app,staging 與 prod 兩個網址 HTTP 狀態碼皆為 **200**。
-2. 完整 demo loop 實際跑通至少一次:改首頁字串 → `pytest` 綠 → commit → push
-   develop → staging → merge main → prod,且 **prod 網址內容包含該次改動的字串**。
+2. 完整 demo loop 實際跑通至少一次:改首頁字串 → `pytest` 綠 → commit → push develop → staging → merge main → prod,且 **prod 網址內容包含該次改動的字串**。
 3. 存在一支錄影,錄下第 2 條的一次成功完整 run。
 
 ### 學員路徑
 
-4. 一個符合 pre-work 前提(Cowork + GitHub 帳號)的**乾淨帳號**,只照學員 prompt 與
-   指示走,達成全部:Django 骨架在、`pytest` 綠、本機至少一個 commit、GitHub 上該 repo
-   有對應 push、Actions 至少成功執行過一次(結論 success —— 該 repo 的 CI 已由本機檔位
-   移除 `deploy-safety` job,只跑 `test`)。且**過程中 Claude 提出、落在禁問清單
-   (`plugins/starter-kit/behavior/forbidden-questions.md`)的問題數 = 0**。
+4. 一個符合 pre-work 前提(Cowork + GitHub 帳號)的**乾淨帳號**,只照學員 prompt 與指示走,達成全部:Django 骨架在、`pytest` 綠、本機至少一個 commit、GitHub 上該 repo 有對應 push、Actions 至少成功執行過一次(結論 success —— 該 repo 的 CI 已由本機檔位移除 `deploy-safety` job,只跑 `test`)。且**過程中 Claude 提出、落在禁問清單(`plugins/starter-kit/behavior/forbidden-questions.md`)的問題數 = 0**。
 5. 微練習可在 **≤10 分鐘**內完成(改指定字串 → 跑測試 → 綠 → commit)。
-6. 學員 prompt 與所有學員指示中,**不含任何 Zeabur 或 Google 的註冊/授權步驟**
-   (可檢查:文字中不出現 Zeabur、Google connector 的安裝動作)。
+6. 學員 prompt 與所有學員指示中,**不含任何 Zeabur 或 Google 的註冊/授權步驟**(可檢查:文字中不出現 Zeabur、Google connector 的安裝動作)。
 
 ### 概念材料
 
-7. 概念材料對三個概念各有:一個「不看 code 就懂」的講法 + 一個對應的 demo 時刻;
-   且材料中出現的每個技術名詞,**第一次出現都有一句白話解釋**(可檢查:名詞清單
-   vs 解釋覆蓋率 = 100%)。
+7. 概念材料對三個概念各有:一個「不看 code 就懂」的講法 + 一個對應的 demo 時刻;且材料中出現的每個技術名詞,**第一次出現都有一句白話解釋**(可檢查:名詞清單 vs 解釋覆蓋率 = 100%)。
 
 ### 表面錯位繞法
 
-8. 學員動手的每一步指示都是 Cowork 版、能獨立照做,**不含「照台上/我的畫面做」這類
-   對 demo 螢幕的依賴**(可檢查:學員指示中不引用 demo 畫面)。
+8. 學員動手的每一步指示都是 Cowork 版、能獨立照做,**不含「照台上/我的畫面做」這類對 demo 螢幕的依賴**(可檢查:學員指示中不引用 demo 畫面)。
 
 ## 驗證方式(高層次)
 
-- **第 1-3 條**:在你的 CLI 機器上實際建置 + 跑一次完整 loop + 錄影;三者存在即為驗證。
-  第 1 條以 `curl -I` 讀兩個網址狀態碼;第 2 條以 prod 頁面內容包含改動字串為準。
-- **第 4-6 條**:用一個乾淨的 Claude(Cowork)+ GitHub 帳號,照學員 prompt 排練走一次
-  (dry-run),記錄是否全達成、是否有 Claude 提出禁問清單問題、是否動用 prompt 外知識。
+- **第 1-3 條**:在你的 CLI 機器上實際建置 + 跑一次完整 loop + 錄影;三者存在即為驗證。第 1 條以 `curl -I` 讀兩個網址狀態碼;第 2 條以 prod 頁面內容包含改動字串為準。
+- **第 4-6 條**:用一個乾淨的 Claude(Cowork)+ GitHub 帳號,照學員 prompt 排練走一次(dry-run),記錄是否全達成、是否有 Claude 提出禁問清單問題、是否動用 prompt 外知識。
 - **第 7-8 條**:對概念材料與學員指示做靜態檢查(名詞覆蓋、概念↔demo 對應、無畫面依賴)。
 
 全部條件週日前可完成,不需等待真實時間流逝。
 
 ## 待確認項(請在 review 頁框選留言)
 
-1. **marketplace 依賴**:`WeihaoLiTW/ai-project-starter` 是否公開、你是否有權 push、
-   本機檔位是否趕得上週日前 merge?(這是學員路徑能不能成立的前提。)
+1. **marketplace 依賴**:`WeihaoLiTW/ai-project-starter` 是否公開、你是否有權 push、本機檔位是否趕得上週日前 merge?(這是學員路徑能不能成立的前提。)
 2. **Windows 學員比例**:有無 Windows 學員?若有,pre-work 要多帶 Windows 安裝檢查。
-3. **demo app**:同意直接用 kit template(最小 Django)+ 改首頁字串來看 promotion 嗎?
-   (若想 demo 更像真服務,範圍變大,建議週日別碰。)
-4. **概念材料載體**:一頁 handout + repo 檔案投影(建議),還是要做 slides?
-5. **要不要加第四個概念**:「AI 不會問你答不出來的技術問題」(kit 的行為層 —— 把
-   技術決策翻譯成業務問題)。它其實是「安心讓 AI 跑」的一根支柱,但不在你原本列的三個
-   概念裡。加它 demo 會多一個「你丟模糊需求、Claude 翻成業務問題」的時刻,範圍略增。
+3. **demo app**:同意直接用 kit template(最小 Django)+ 改首頁字串來看 promotion 嗎?(若想 demo 更像真服務,範圍變大,建議週日別碰。)
+4. **要不要加第四個概念**:「AI 不會問你答不出來的技術問題」(kit 的行為層 —— 把技術決策翻譯成業務問題)。它其實是「安心讓 AI 跑」的一根支柱,但不在你原本列的三個概念裡。加它 demo 會多一個「你丟模糊需求、Claude 翻成業務問題」的時刻,範圍略增。
 
 ## 決策紀錄(供 plan 階段歸檔 ADR)
 
