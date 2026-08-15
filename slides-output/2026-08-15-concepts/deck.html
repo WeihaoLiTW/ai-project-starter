@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>安心用 AI 開發</title>
+<title>第一次用 AI 做東西</title>
 <style>
   :root{
     --paper:#faf9f5; --ink:#1b1b18; --ink-soft:#5c5a52; --line:#e5e2d9;
@@ -69,7 +69,7 @@
 <section class="slide">
   <div class="wrap">
     <p class="idx"><span class="en">A workshop</span></p>
-    <h1 class="cover-title">安心用<br>AI 開發</h1>
+    <h1 class="cover-title">第一次<br>用 AI 做東西</h1>
     <p class="cover-sub">每一頁,先問一個你真的會遇到的問題。</p>
     <p class="cover-date"><span class="en">2026 / 08 / 16</span></p>
   </div>
@@ -80,13 +80,12 @@
   <div class="wrap">
     <p class="kicker">今天的流程</p>
     <div class="agenda">
-      <div class="astep"><div class="an en">1</div><div class="at">為什麼要學這個　<small>安心放手,讓 AI 幫你把想法做出來</small></div></div>
-      <div class="astep"><div class="an en">2</div><div class="at">幾個你一定會遇到的問題　<small>git、測試、記憶、上線</small></div></div>
-      <div class="astep"><div class="an en">3</div><div class="at">動手前　<small>貼一段 prompt,幫你把環境裝好</small></div></div>
+      <div class="astep"><div class="an en">1</div><div class="at">先懂幾個基礎　<small>git、測試、環境。做任何東西都用得到</small></div></div>
+      <div class="astep"><div class="an en">2</div><div class="at">把它們串起來　<small>一個東西怎麼從改一行到上線</small></div></div>
+      <div class="astep"><div class="an en">3</div><div class="at">怎麼跟 Claude 合作　<small>它會忘、那段 prompt、放手到什麼程度</small></div></div>
       <div class="astep"><div class="an en">4</div><div class="at">你自己做一次　<small>改，測，綠，存，上傳 GitHub</small></div></div>
-      <div class="astep"><div class="an en">5</div><div class="at">看我 demo　<small>一個東西怎麼從本機一路上線</small></div></div>
-      <div class="astep"><div class="an en">6</div><div class="at">你的專案　<small>適不適合這套，最難的地方在哪</small></div></div>
-      <div class="astep"><div class="an en">7</div><div class="at">問答，下一步</div></div>
+      <div class="astep"><div class="an en">5</div><div class="at">你的專案　<small>適不適合這套，最難的地方在哪</small></div></div>
+      <div class="astep"><div class="an en">6</div><div class="at">問答，下一步</div></div>
     </div>
   </div>
 </section>
@@ -192,23 +191,104 @@
   <div class="wrap">
     <p class="kicker">在你的專案裡，它擋下這些</p>
     <div class="terms">
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">加了新功能</div><div class="def">狗狗 App 加記帳類別，結果體重圖表不小心壞了。<b>測試抓到。</b></div></div>
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">改了搜尋</div><div class="def">改鮮食指南，洋蔥、巧克力的「危險」警告不跳了。<b>測試守住。</b></div></div>
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">環境不一樣</div><div class="def">本機看起來好好的，上傳後雲端測試紅了。<b>持續整合幫你抓。</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">加了新功能</div><div class="def">狗狗 App 加記帳類別，結果體重圖表不小心壞了。<b>測試抓到。</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">改了搜尋</div><div class="def">改鮮食指南，洋蔥、巧克力的「危險」警告不跳了。<b>測試守住。</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">環境不一樣</div><div class="def">本機看起來好好的，上傳後雲端測試紅了。<b>持續整合幫你抓。</b></div></div>
     </div>
   </div>
 </section>
 
-<!-- 03 memory problem -->
+<!-- 03 env problem -->
 <section class="slide">
   <div class="wrap">
-    <p class="idx"><span class="n en">03</span>　<span class="en">memory</span></p>
+    <p class="idx"><span class="n en">03</span>　<span class="en">dev / staging / prod</span></p>
+    <h1>上線前,<br>怎麼確定不會出包?</h1>
+    <p class="lead">直接給別人用,萬一有錯很尷尬。</p>
+  </div>
+</section>
+
+<!-- 03 env model -->
+<section class="slide">
+  <div class="wrap">
+    <p class="kicker">答案：分三關，一關一關先看再上</p>
+    <div class="fig">
+      <svg viewBox="0 0 1000 220" width="100%" style="max-width:1080px">
+        <defs><marker id="as" markerWidth="10" markerHeight="10" refX="6.5" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#1f6f5c"/></marker></defs>
+        <g>
+          <rect x="30" y="78" width="250" height="76" rx="13" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
+          <text x="155" y="112" text-anchor="middle" font-size="21" fill="#1b1b18" font-family="Georgia,serif">dev</text>
+          <text x="155" y="138" text-anchor="middle" font-size="16" fill="#5c5a52">在自己電腦試</text>
+        </g>
+        <text x="322" y="106" text-anchor="middle" font-size="15" fill="#1f6f5c">先看</text>
+        <line x1="288" y1="116" x2="366" y2="116" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#as)"/>
+        <g>
+          <rect x="375" y="78" width="250" height="76" rx="13" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
+          <text x="500" y="112" text-anchor="middle" font-size="21" fill="#1b1b18" font-family="Georgia,serif">staging</text>
+          <text x="500" y="138" text-anchor="middle" font-size="16" fill="#5c5a52">推到給自己看的網站</text>
+        </g>
+        <text x="667" y="106" text-anchor="middle" font-size="15" fill="#1f6f5c">再看</text>
+        <line x1="633" y1="116" x2="711" y2="116" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#as)"/>
+        <g>
+          <rect x="720" y="78" width="250" height="76" rx="13" fill="#e6f0eb" stroke="#1f6f5c" stroke-width="2"/>
+          <text x="845" y="112" text-anchor="middle" font-size="21" fill="#1f6f5c" font-family="Georgia,serif">prod</text>
+          <text x="845" y="138" text-anchor="middle" font-size="16" fill="#1f6f5c">真正給大家用</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap">每一關都能<strong>先看再決定</strong>要不要往下。正式版不會被你當場改壞。</p>
+  </div>
+</section>
+
+<!-- CASE: tie it together -->
+<section class="slide">
+  <div class="wrap">
+    <p class="idx"><span class="en">the whole loop</span></p>
+    <h2>把它們串起來:一個改動的完整旅程</h2>
+    <div class="fig">
+      <svg viewBox="0 0 1000 440" width="100%" style="max-width:1120px">
+        <defs><marker id="af" markerWidth="10" markerHeight="10" refX="6.5" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#1f6f5c"/></marker></defs>
+        <!-- tier 1 -->
+        <text x="40" y="46" font-size="18" fill="#5c5a52" class="en" font-family="Georgia,serif">1</text>
+        <text x="66" y="46" font-size="18" fill="#5c5a52">在你的電腦(本機)</text>
+        <rect x="40" y="72" width="150" height="60" rx="12" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
+        <text x="115" y="108" text-anchor="middle" font-size="18" fill="#1b1b18">改一行</text>
+        <line x1="196" y1="102" x2="256" y2="102" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#af)"/>
+        <g><circle cx="300" cy="102" r="27" fill="#1f6f5c"/><polyline points="289,102 297,111 312,93" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><text x="300" y="152" text-anchor="middle" font-size="16" fill="#5c5a52">測試綠</text></g>
+        <line x1="332" y1="102" x2="392" y2="102" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#af)"/>
+        <g><circle cx="436" cy="102" r="27" fill="#1f6f5c"/><polyline points="425,102 433,111 448,93" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><text x="436" y="152" text-anchor="middle" font-size="16" fill="#5c5a52">commit 存檔</text></g>
+        <!-- push down -->
+        <path d="M436 132 C 436 200, 150 200, 150 258" fill="none" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#af)"/>
+        <text x="300" y="205" text-anchor="middle" font-size="16" fill="#1f6f5c">push 上傳到 GitHub</text>
+        <!-- tier 2 -->
+        <text x="40" y="250" font-size="18" fill="#5c5a52" class="en" font-family="Georgia,serif">2</text>
+        <text x="66" y="250" font-size="18" fill="#5c5a52">在雲端(GitHub、上線)</text>
+        <rect x="60" y="278" width="200" height="70" rx="13" fill="#e6f0eb" stroke="#1f6f5c" stroke-width="2"/>
+        <text x="160" y="308" text-anchor="middle" font-size="18" fill="#1f6f5c">CI 自動再測一次</text>
+        <text x="160" y="332" text-anchor="middle" font-size="15" fill="#1f6f5c">綠了才往下</text>
+        <line x1="266" y1="313" x2="336" y2="313" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#af)"/>
+        <rect x="344" y="278" width="200" height="70" rx="13" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
+        <text x="444" y="308" text-anchor="middle" font-size="18" fill="#1b1b18">staging</text>
+        <text x="444" y="332" text-anchor="middle" font-size="15" fill="#5c5a52">先看對不對</text>
+        <line x1="550" y1="313" x2="620" y2="313" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#af)"/>
+        <rect x="628" y="278" width="200" height="70" rx="13" fill="#1f6f5c"/>
+        <text x="728" y="308" text-anchor="middle" font-size="18" fill="#fff">prod 上線</text>
+        <text x="728" y="332" text-anchor="middle" font-size="15" fill="#cfe6dd">真正給大家用</text>
+      </svg>
+    </div>
+    <p class="cap">同一套 git、測試、環境,串起來就是這條路:<strong>改一行,一路安全地送到上線</strong>。每一步壞了,都停得下來、回得去。</p>
+  </div>
+</section>
+
+<!-- 04 memory problem -->
+<section class="slide">
+  <div class="wrap">
+    <p class="idx"><span class="n en">04</span>　<span class="en">how Claude works</span></p>
     <h1>Claude 會記得<br>我上次講的嗎?</h1>
     <p class="lead">我以為它記得,結果它好像<strong>忘了</strong>?</p>
   </div>
 </section>
 
-<!-- 03 memory model -->
+<!-- 04 memory model -->
 <section class="slide">
   <div class="wrap">
     <p class="kicker">答案</p>
@@ -230,46 +310,6 @@
       </svg>
     </div>
     <p class="cap">最容易誤會的是「以為 Claude 都記得」。它像記得，是因為你<strong>把東西寫在外面讓它每次重讀</strong>。最可靠的是 repo 裡的檔案，你看得到也改得到。</p>
-  </div>
-</section>
-
-<!-- 04 staging problem + model -->
-<section class="slide">
-  <div class="wrap">
-    <p class="idx"><span class="n en">04</span>　<span class="en">dev / staging / prod</span></p>
-    <h1>上線前,<br>怎麼確定不會出包?</h1>
-    <p class="lead">直接給別人用,萬一有錯很尷尬。</p>
-  </div>
-</section>
-
-<section class="slide">
-  <div class="wrap">
-    <p class="kicker">答案：分三關，一關一關先看再上</p>
-    <div class="fig">
-      <svg viewBox="0 0 1000 220" width="100%" style="max-width:1080px">
-        <defs><marker id="as" markerWidth="10" markerHeight="10" refX="6.5" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#1f6f5c"/></marker></defs>
-        <g>
-          <rect x="30" y="78" width="250" height="76" rx="13" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
-          <text x="155" y="112" text-anchor="middle" font-size="21" fill="#1b1b18" class="en" font-family="Georgia,serif">dev</text>
-          <text x="155" y="138" text-anchor="middle" font-size="16" fill="#5c5a52">在自己電腦試</text>
-        </g>
-        <text x="322" y="106" text-anchor="middle" font-size="15" fill="#1f6f5c">先看</text>
-        <line x1="288" y1="116" x2="366" y2="116" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#as)"/>
-        <g>
-          <rect x="375" y="78" width="250" height="76" rx="13" fill="#fff" stroke="#d9d5ca" stroke-width="2"/>
-          <text x="500" y="112" text-anchor="middle" font-size="21" fill="#1b1b18" font-family="Georgia,serif">staging</text>
-          <text x="500" y="138" text-anchor="middle" font-size="16" fill="#5c5a52">推到給自己看的網站</text>
-        </g>
-        <text x="667" y="106" text-anchor="middle" font-size="15" fill="#1f6f5c">再看</text>
-        <line x1="633" y1="116" x2="711" y2="116" stroke="#1f6f5c" stroke-width="2.4" marker-end="url(#as)"/>
-        <g>
-          <rect x="720" y="78" width="250" height="76" rx="13" fill="#e6f0eb" stroke="#1f6f5c" stroke-width="2"/>
-          <text x="845" y="112" text-anchor="middle" font-size="21" fill="#1f6f5c" font-family="Georgia,serif">prod</text>
-          <text x="845" y="138" text-anchor="middle" font-size="16" fill="#1f6f5c">真正給大家用</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap">每一關都能<strong>先看再決定</strong>要不要往下。正式版不會被你當場改壞。</p>
   </div>
 </section>
 
@@ -324,7 +364,7 @@
         </ul>
       </div>
     </div>
-    <p class="cap">Claude 本身有 <span class="en">Plan / Ask / Edit / Bypass</span> 幾種模式。這套接近「放手」，但加上這一條規則補回安全：<strong>不會在你不知情時，把東西刪掉或公開</strong>。</p>
+    <p class="cap">Claude 本身有 <span class="en">Plan / Ask / Edit / Bypass</span> 幾種模式。這套讓它<strong>放手做</strong>，但刪東西、公開之前，一定先停下來問你。</p>
   </div>
 </section>
 
@@ -381,9 +421,9 @@
   <div class="wrap">
     <p class="kicker">用這把尺量你的專案</p>
     <div class="terms">
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">報表自動化</div><div class="def">結果要寫進公司雲端表格。<b>有沒有權限寫進去?</b></div></div>
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">訂單比價</div><div class="def">要比市場價格。<b>那些價格從哪來，有沒有 API?</b></div></div>
-      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:19px">抄經 App</div><div class="def">要手寫抄經。<b>手寫筆跡怎麼擷取，觸控還是拍照?</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">報表自動化</div><div class="def">結果要寫進公司雲端表格。<b>有沒有權限寫進去?</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">訂單比價</div><div class="def">要比市場價格。<b>那些價格從哪來，有沒有 API?</b></div></div>
+      <div class="row"><div class="term" style="font-family:var(--cjk);font-size:20px">抄經 App</div><div class="def">要手寫抄經。<b>手寫筆跡怎麼擷取，觸控還是拍照?</b></div></div>
     </div>
   </div>
 </section>
@@ -393,7 +433,7 @@
   <div class="wrap">
     <p class="idx"><span class="en">to sum up</span></p>
     <h1>不管你做什麼,<br>底層都一樣</h1>
-    <p class="cap" style="font-size:21px">今天動手：改，測，綠，存，上傳。這就是 git 的安全網。<br>部署、資料進出，看 demo，之後慢慢來。</p>
+    <p class="cap" style="font-size:21px">今天動手：改，測，綠，存，上傳。這就是 git 的安全網。<br>怎麼跟 Claude 合作、資料進出，記住這幾張圖就夠了。</p>
   </div>
 </section>
 
