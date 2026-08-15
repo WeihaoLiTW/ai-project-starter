@@ -3,6 +3,32 @@ marp: true
 theme: default
 paginate: true
 lang: zh-TW
+style: |
+  section {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    font-size: 24px;
+    line-height: 1.5;
+    padding: 50px 64px;
+    color: #1f2937;
+    background: #ffffff;
+  }
+  h1 { color: #2563eb; font-size: 44px; }
+  h2 {
+    color: #2563eb;
+    border-bottom: 3px solid #bfdbfe;
+    padding-bottom: 8px;
+    font-size: 31px;
+  }
+  ul, ol { line-height: 1.55; }
+  li { margin: 3px 0; }
+  code {
+    background: #eef2ff;
+    color: #1e3a8a;
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  section.lead h2 { text-align: center; border: none; }
+  section::after { color: #9ca3af; }
 ---
 
 # 安心用 AI 開發
@@ -111,14 +137,14 @@ lang: zh-TW
 ## Claude 要「放手」到什麼程度?
 
 **問題**:它會不會自己亂改、亂刪東西?
-**答案**:你可以決定它多自動;給新手的建議是「放手,但危險動作才問」
+**答案**:它有幾種「模式」,你選它多自動 —— 新手挑中間、危險的別用
 
-- **一直問**:每一步都等你點同意 → 安全但很慢
-- **放手**:讀檔、寫檔、跑測試自己做 → 快很多
-- **建議**:放手,但**刪東西、給別人看(對外)一定停下來問你**
-- 用 Cowork 的**本機模式**,不要用雲端模式(雲端有「讀到舊檔」的問題)
+- **Plan(計畫)**:先想好、給你看計畫,你同意才動手 → 大改動前用
+- **Ask(每步問)**:每個動作前都先問你 → 最安全、最慢
+- **Edit(自動改檔)**:改檔案不用一個個問,直接改 → 快;刪除、對外仍會停下來問
+- **Bypass(全放行)**:什麼都不問、全自動 → 危險,**新手不要用**
 
-→ 這些,那段長 prompt 已經幫你設好一部分
+→ 建議新手:平常 **Ask 或 Edit**,大改動前先 **Plan**,永遠別 **Bypass**
 
 ---
 
