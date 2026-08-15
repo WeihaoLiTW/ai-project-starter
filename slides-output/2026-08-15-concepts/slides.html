@@ -19,78 +19,85 @@
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="3" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="3" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E6%94%B9%E9%8C%AF%E4%BA%86%E6%80%8E%E9%BA%BC%E8%BE%A6">改錯了怎麼辦?</h2>
-<p><strong>問題</strong>:我改壞了,想回到昨天那版</p>
-<p><strong>答案</strong>:用 git,幫你的專案存檔、隨時倒帶</p>
+<p><strong>問題</strong>:我改壞了,想回到昨天那版<br />
+<strong>答案</strong>:用 git,幫你的專案存檔、隨時倒帶</p>
+<p>名詞:<strong>git</strong> 幫你存檔+記錄每次改動的工具｜<strong>repo(倉庫)</strong> 放專案所有檔案和歷史的地方｜<strong>commit(存檔)</strong> 把現在狀態存成一個能回去的點</p>
+<p>例:</p>
 <ul>
-<li><strong>git</strong>:一個幫你「存檔 + 記錄每次改動」的工具</li>
-<li><strong>repo(倉庫)</strong>:放這個專案所有檔案和歷史的地方</li>
-<li><strong>commit(存檔)</strong>:把現在的狀態存成一個點,之後能回來</li>
+<li>狗狗 App 飼料公式改錯、算出離譜份量 → 回上一個綠存檔點</li>
+<li>排班系統改介面改壞 → git 倒回昨天能用的版本</li>
+<li>想比較「改之前 vs 改之後」→ git 看得到每次改了什麼</li>
 </ul>
-<p>→ 而且每個存檔點都是「測試綠」的,回去一定能跑</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="4" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="4" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E9%80%99%E6%AC%A1%E6%94%B9%E5%8B%95%E6%9C%89%E6%B2%92%E6%9C%89%E6%8A%8A%E4%B9%8B%E5%89%8D%E5%BC%84%E5%A3%9E">這次改動,有沒有把之前弄壞?</h2>
-<p><strong>問題</strong>:我改了一個地方,會不會不小心弄壞別的?</p>
-<p><strong>答案</strong>:用測試 + CI 自動幫你檢查</p>
+<p><strong>問題</strong>:我改了一個地方,會不會不小心弄壞別的?<br />
+<strong>答案</strong>:用測試 + CI 自動幫你檢查</p>
+<p>名詞:<strong>測試</strong> 一小段程式,自動確認某功能還是對的｜<strong>CI(持續整合)</strong> 每次上傳,雲端把全部測試重跑一遍</p>
+<p>例:</p>
 <ul>
-<li><strong>測試</strong>:一小段程式,自動確認「某個功能還是對的」</li>
-<li><strong>CI(持續整合)</strong>:你每次上傳,雲端自動把全部測試<strong>重跑一遍</strong></li>
-<li>綠燈 = 沒弄壞;紅燈 = 當場知道哪裡壞</li>
+<li>狗狗 App 加記帳類別 → 體重圖表不小心壞了,測試抓到</li>
+<li>改鮮食搜尋 → 洋蔥/巧克力的「危險」警告不跳了,測試守住</li>
+<li>本機看起來好好的、上傳後 CI 紅 → 環境不同,CI 幫你抓</li>
 </ul>
-<p>→ 不用自己一個個檢查,機器幫你把關</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="5" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="5" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="claude-%E6%9C%83%E8%A8%98%E5%BE%97%E6%88%91%E4%B8%8A%E6%AC%A1%E8%AC%9B%E7%9A%84%E5%97%8E">Claude 會記得我上次講的嗎?</h2>
-<p><strong>問題</strong>:我以為它記得,結果它好像忘了?</p>
-<p><strong>答案</strong>:它每次都是重新開始 —— 要它記得,得寫下來</p>
+<p><strong>問題</strong>:我以為它記得,結果它好像忘了?<br />
+<strong>答案</strong>:它每次都重新開始;要它記得,靠這些現在常用的做法</p>
+<p>名詞:<strong>CLAUDE.md</strong> 專案規則,它每次先讀｜<strong>skill</strong> 把一套做法打包,之後一句話就重用｜<strong>MCP</strong> 接外部工具/資料的插頭｜<strong>memory</strong> Claude 自帶(黑盒,少依賴)</p>
+<p>例:</p>
 <ul>
-<li><strong>session(對話)</strong>:每開一次,就是一張新的白紙</li>
-<li><strong>CLAUDE.md</strong>:放在 repo 裡的「這個專案的規則」,它每次會先讀</li>
-<li>記憶不在它腦子裡,在你的<strong>檔案</strong>裡(你看得到、也改得到)</li>
+<li>今天叫「員工」明天它叫「同事」 → 寫進 CLAUDE.md 就固定</li>
+<li>一套「匯出報表的步驟」 → 做成 skill,以後說一句就跑</li>
+<li>要它連公司的 Google Sheets → 用 MCP,不是靠它「記得」</li>
 </ul>
-<p>→ 開新對話時,它「忘記」→ 讀 CLAUDE.md 才接得上</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="6" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="6" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E4%B8%8A%E7%B7%9A%E5%89%8D%E6%80%8E%E9%BA%BC%E7%A2%BA%E5%AE%9A%E4%B8%8D%E6%9C%83%E5%87%BA%E5%8C%85">上線前,怎麼確定不會出包?</h2>
-<p><strong>問題</strong>:直接給別人用,萬一有錯很尷尬</p>
-<p><strong>答案</strong>:分三關,一關一關先看再上 —— dev → staging → prod</p>
+<p><strong>問題</strong>:直接給別人用,萬一有錯很尷尬<br />
+<strong>答案</strong>:分三關,一關一關先看再上 —— dev → staging → prod</p>
+<p>名詞:<strong>部署(deploy)</strong> 把程式放上網路讓人能連｜<strong>staging</strong> 先給自己看的測試網站｜<strong>prod</strong> 真正給人用的正式網站</p>
+<p>例:</p>
 <ul>
-<li><strong>部署(deploy)</strong>:把程式放到網路上,讓別人能連</li>
-<li><strong>staging</strong>:先給自己看的測試網站</li>
-<li><strong>prod</strong>:真正給人用的正式網站</li>
+<li>排班系統改完,先在 staging 自己排一輪,對了才讓同事用</li>
+<li>開店評估公式改了,staging 試算幾組,對了才上 prod</li>
+<li>prod 壞了但 staging 沒 → 正式版沒被你當場改壞</li>
 </ul>
-<p>→ 每一關都能<strong>先看再決定</strong>要不要往下</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="7" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="7" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="ai-%E5%95%8F%E6%88%91%E6%8A%80%E8%A1%93%E5%95%8F%E9%A1%8C%E6%88%91%E7%AD%94%E4%B8%8D%E5%87%BA%E4%BE%86">AI 問我技術問題,我答不出來?</h2>
-<p><strong>問題</strong>:它問「要用哪個資料庫」,我哪知道</p>
-<p><strong>答案</strong>:好的 AI 不問技術,把它翻成你答得出來的問題</p>
+<p><strong>問題</strong>:它問「要用哪個資料庫」,我哪知道<br />
+<strong>答案</strong>:好的 AI 不問技術,把它翻成你答得出來的業務問題</p>
+<p>例(技術問題 → 它其實該問的):</p>
 <ul>
-<li>它會問:「最多幾人同時用?會給公司外的人用嗎?」</li>
-<li>你回答<strong>你的工作</strong>,技術的部分它自己扛</li>
+<li>「要用哪個資料庫?」 → 「最多幾人同時用?會給公司外的人用嗎?」</li>
+<li>「要不要做權限系統?」 → 「除了你和主管,還有第三種人嗎?」</li>
+<li>「要保留刪掉的資料嗎?」 → 「員工離職後,他排過的班要留著還是消失?」</li>
 </ul>
-<p>→ 你不該被問你答不出來的問題</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="8" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="8" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E8%A6%81%E7%9C%9F%E7%9A%84%E7%B5%A6%E5%88%A5%E4%BA%BA%E7%94%A8%E9%9C%80%E8%A6%81%E4%BB%80%E9%BA%BC">要真的給別人用,需要什麼?</h2>
-<p><strong>問題</strong>:東西做好了,怎麼變成別人能用的服務?</p>
-<p><strong>答案</strong>:一個真服務,至少要有這三樣</p>
+<p><strong>問題</strong>:東西做好了,怎麼變成別人能用的?<br />
+<strong>答案</strong>:看你做的是<strong>哪一種</strong>,需要的不一樣</p>
 <ul>
-<li>一台<strong>一直開著的機器</strong>(運算)</li>
-<li>一個<strong>網址</strong>(網域)</li>
-<li>一個<strong>資料留得住的地方</strong>(不會一關機就消失)</li>
+<li><strong>網頁服務</strong>(排班、開店評估、狗狗 App):一台一直開的機器 + 一個網址 + 資料留得住 → 平台(如 Zeabur)一次備好</li>
+<li><strong>本機自動化</strong>(報表整理、表格更新):不用上線,關鍵是<strong>資料進出 + 權限</strong></li>
+<li><strong>手機 app</strong>(抄經 app):要上架 App Store,是另一條路</li>
 </ul>
-<p>→ 平台(如 Zeabur)幫你把這些一次備好;只用自己電腦 → 別人連不到、關機就沒了</p>
+<p>→ 先想清楚:你的東西是哪一種</p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="9" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="9" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E5%81%9A%E4%B8%80%E5%80%8B%E5%B7%A5%E5%85%B7%E6%9C%80%E5%AE%B9%E6%98%93%E5%8D%A1%E5%9C%A8%E5%93%AA">做一個工具,最容易卡在哪?</h2>
-<p><strong>問題</strong>:感覺不難,但做起來就是卡</p>
-<p><strong>答案</strong>:通常卡在「資料怎麼進、怎麼出」</p>
+<p><strong>問題</strong>:感覺不難,但做起來就是卡<br />
+<strong>答案</strong>:通常卡在「資料怎麼進、怎麼出」</p>
+<p>名詞:<strong>進</strong> 有 API?手填?拍照轉換?別系統有權限?｜<strong>出</strong> 存自己的庫?寫回別系統(權限)?產檔?</p>
+<p>例:</p>
 <ul>
-<li><strong>進</strong>:有 API 嗎?使用者手填?拍照轉換?別系統有權限嗎?</li>
-<li><strong>出</strong>:存自己的庫?寫回別系統(有權限?)?產出檔案?</li>
+<li>報表自動化:結果要寫進公司雲端表格 → 有沒有權限?</li>
+<li>訂單比價:市場價格從哪來 → 有沒有 API?</li>
+<li>抄經 app:手寫筆跡怎麼擷取 → 觸控?拍照?</li>
 </ul>
-<p>→ 做任何工具,先問:資料<strong>從哪來、去哪、有沒有權限</strong></p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="10" data-paginate="true" data-theme="default" data-lang="zh-TW" lang="zh-TW" data-marpit-pagination="10" style="--paginate:true;--theme:default;--lang:zh-TW;" data-marpit-pagination-total="10">
 <h2 id="%E6%94%B6%E6%9D%9F">收束</h2>
