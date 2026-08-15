@@ -19,6 +19,15 @@
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/guard_secrets.py"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}\"/scripts/guard_danger.py"
+          }
+        ]
       }
     ],
     "Stop": [
