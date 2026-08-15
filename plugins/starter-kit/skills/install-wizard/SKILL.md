@@ -68,6 +68,25 @@ Zeabur 的錯誤訊息說不清楚原因，所以順序錯了他會卡死在一�
 13. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
     沒綠的項目照它給的說法處理，不要在還有紅燈的時候就跟他說裝好了。
 
+## 本機檔位（local mode）—— 訓練當天用
+
+有些場合（例如訓練）只需要把環境裝到「能在本機改程式、跑測試、存檔、上傳 GitHub」為止，
+不做線上部署。使用者請你走「本機檔位」時，只做上面 13 步裡的這幾步，其餘跳過：
+
+- **做**：1（readiness check）、2（本機模式）、3（工作資料夾）、4（GitHub —— 只建
+  **一個公開的 code repo**，拿無限 CI；本機檔位**不建**私有備份 repo）、6（複製 template）、
+  7（裝相依套件）。做完 push 到 GitHub，讓 CI（`tests.yml` 的 `test` job）跑一次、轉綠。
+- **跳過**：5（租主機/ZeaburOS）、8-12（密鑰、接部署、抄 ID、備份）、以及 Google
+  connector。這些是部署相關，本機檔位一律不做。
+
+**複製 template 後，必須刪掉 `.github/workflows/tests.yml` 裡的 `deploy-safety` job**，
+只留 `test` job。原因：本機檔位不設部署 secret，`deploy-safety` 沒 secret 會 `exit 1`
+變紅 X，使用者一 push 就看到一個看似壞掉的紅燈 —— 但那只是還沒設定部署而已。刪掉它，
+使用者的公開 repo 的 CI 就只剩 `test`、直接全綠。（完整安裝時保留這個 job，它會提醒
+部署者補上 secret。）
+
+裝到這裡，使用者就能在自己電腦上「改一點 → 跑測試 → 綠了自動存檔 → push 上 GitHub」。
+
 ## Zeabur 怎麼操作
 
 不要假設任何一條路可用。先讓 health-check skill 探測，它會告訴你走 CLI、
