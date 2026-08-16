@@ -73,6 +73,13 @@ web-design skill 自動處理，這裡不用另外決定技術細節。
 
     python3 -m pip install -r requirements.lock.txt
 
+複製 template 後，如果使用者還沒要上線（沒做下面「要上線」那段），必須刪掉
+`.github/workflows/tests.yml` 裡的 `deploy-safety` job，只留 `test` job。
+原因：還沒設定部署 secret 的情況下，`deploy-safety` 沒 secret 會 `exit 1`
+變紅 X，使用者一 push 就看到一個看似壞掉的紅燈——但那只是還沒設定部署而已。
+刪掉它，公開 repo 的 CI 就只剩 `test`、直接全綠。等使用者之後真的要做「要上線」
+那段時，把 `deploy-safety` job 加回去，它會提醒補上部署 secret。
+
 ### 要備份 / 分享 / CI → 建 GitHub repo
 
 註冊 GitHub、建立一個**公開**的程式碼 repo、push 上去。公開換來無限的 CI 額度。
