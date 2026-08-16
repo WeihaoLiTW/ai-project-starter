@@ -29,7 +29,7 @@
 
 ### B. 三個加購段（使用者有需求才主動推薦，無 skill 引導，模型現場用資產）
 
-- 「要做網頁」→ 複製 Django `template/`（opt-in 資產）。網頁美化的 `web-polish` **不綁這個加購**，只要
+- 「要做網頁」→ 複製 Django `template/`（opt-in 資產）。網頁美化的 `web-design` **不綁這個加購**，只要
   在弄 HTML（含本機 dev）就會自動套。
 - 「要備份 / 分享 / CI」→ 建 GitHub public repo + push。
 - 「要讓別人用 / 上線」→ Zeabur staging/prod（用現有 `zeabur.yaml`、prod 設定、`backup-repo/`）。
@@ -48,7 +48,7 @@
 - 維持 skill，frontmatter 設 `disable-model-invocation: true`（不自動觸發、只有被明確叫才跑）。
 - SKILL.md 改寫：主線為本機起點六步，Django/GitHub/Zeabur 收進「什麼時候加什麼」加購段。
 - 學員本機 prompt 明確指示叫它。
-- 其餘 skill（think-first、web-polish）維持可自動觸發。
+- 其餘 skill（think-first、web-design）維持可自動觸發。
 
 ### E. 常駐行為（session start）強化
 
@@ -61,7 +61,7 @@
 `think-first` skill 保留「深問法」的完整程序（含一次問一輪、換講法再問的節奏）；session start 只帶
 persona（怎麼講話、翻業務問題的立場），所以平常對話都用對的口氣，但完整問法要 think-first 被觸發才跑。
 
-### F. web-polish skill（新增）
+### F. web-design skill（新增）
 
 自包含的網頁美化指引。**只要在做網頁/HTML 就會用到，不限上線或加購——本機 dev 剛做出一個頁面時
 就該套**（可自動觸發，非 install 加購專屬）。原則（白話、可執行）：版面克制（一個重點其他安靜、
@@ -104,7 +104,7 @@ Claude 檢查關鍵幾項後，用一句「裝好了」帶過（學員選擇的�
    import 錯誤、無孤兒測試）。
 7. `pillars.md` 內容含這三類條目（可用關鍵字斷言，或測 `session_start` 注入內容含之）：互動核心原則、
    對外發布前停下來問、log 查不到就老實說。
-8. `plugins/starter-kit/skills/web-polish/SKILL.md` 存在且 frontmatter 有 `name` 與 `description`，
+8. `plugins/starter-kit/skills/web-design/SKILL.md` 存在且 frontmatter 有 `name` 與 `description`，
    且 description 涵蓋「做網頁／HTML 時使用」（可自動觸發、非 install 加購專屬）。
 9. deck.html 含「首次裝什麼（本機四樣）」與「之後加什麼（三加購）」兩區塊，且每項標注回扣的概念。
 10. opt-in 部署資產仍在（Django `template/`、`zeabur.yaml`、`backup-repo/`），且其既有測試
@@ -114,7 +114,7 @@ Claude 檢查關鍵幾項後，用一句「裝好了」帶過（學員選擇的�
 ## 驗證方式
 
 - **自動**：`pytest tests/ -q` 全綠——涵蓋條件 2、3、6、10，以及新增測試（本機骨架綠、
-  install-wizard frontmatter 有 disable-model-invocation、web-polish 存在且被引用、pillars 含關鍵條目、
+  install-wizard frontmatter 有 disable-model-invocation、web-design 存在且被引用、pillars 含關鍵條目、
   student prompt 純本機）。
 - **半自動腳本檢查**：條件 1、4、5、7、8、9 用一次性檢查腳本或 grep 斷言（frontmatter 欄位、prompt
   文字、pillars 關鍵字、deck 區塊）。
