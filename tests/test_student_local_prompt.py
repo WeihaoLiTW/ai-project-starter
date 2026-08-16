@@ -30,3 +30,18 @@ def test_student_paste_block_has_no_deploy_or_google_steps():
 def test_student_paste_block_requests_local_mode():
     block = _paste_block(PROMPT.read_text(encoding="utf-8"))
     assert "本機檔位" in block, "student paste block must ask for local mode"
+
+
+def test_local_prompt_has_no_deploy_or_upload_steps():
+    """B4a: paste block must stay local-only — no GitHub upload, no deploy target."""
+    block = _paste_block(PROMPT.read_text(encoding="utf-8"))
+    assert "Zeabur" not in block, "student paste block must not mention Zeabur"
+    assert "Google" not in block, "student paste block must not mention Google"
+    assert "GitHub" not in block, "student paste block must not mention GitHub"
+
+
+def test_local_prompt_invokes_the_install_wizard():
+    """B4b: install-wizard has disable-model-invocation, so the paste block must
+    name it explicitly for Claude to invoke it."""
+    block = _paste_block(PROMPT.read_text(encoding="utf-8"))
+    assert "install-wizard" in block, "student paste block must name install-wizard"
