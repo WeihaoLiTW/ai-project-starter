@@ -1,6 +1,7 @@
 ---
 name: install-wizard
-description: 帶使用者從零裝好整套環境 —— 檢查機器、註冊三個服務、建立專案、部署兩個環境。使用者第一次開始、或說「幫我設定環境」「從頭開始」時使用。
+description: 首次安裝環境時使用（使用者明確要求安裝、說「幫我裝環境」「從頭開始」時）。預設只裝本機環境，不建外部帳號、不部署。
+disable-model-invocation: true
 ---
 
 # 安裝嚮導
@@ -8,17 +9,18 @@ description: 帶使用者從零裝好整套環境 —— 檢查機器、註冊�
 你要帶的人不會寫程式。每一步都先講「這一步在幹嘛」，再講「你要點什麼」。
 一次只給一件事做。他做完回報，你才給下一件。
 
-**不要問他任何技術選擇。** 技術棧已經定了：Django、SQLite、GitHub、Zeabur。
-他要決定的只有名字、帳號、以及業務規則。
+**不要問他任何技術選擇。** 預設只裝本機環境，不碰資料庫、框架這些決定。
+他要決定的只有名字、email，以及業務規則。
 
-**貼一段話沒辦法全自動裝好。** 裝 plugin、裝 connector、改設定都是 UI 動作，
+**貼一段話沒辦法全自動裝好。** 裝 plugin、改設定都是 UI 動作，
 Anthropic 刻意鎖在使用者手動同意後面，你按不到那些按鈕。你能做的是一步步帶他點，
-以及你自己能用工具做的部分（複製檔案、跑指令、產密鑰）直接幫他做掉。
+以及你自己能用工具做的部分（複製檔案、跑指令）直接幫他做掉。
 不要跟他說「我幫你裝好了」——講清楚是「帶你裝」還是「我直接做完了」。
 
-## 順序不能換
+## 主線：六步裝好本機環境
 
-Zeabur 的錯誤訊息說不清楚原因，所以順序錯了他會卡死在一個沒有下一步的畫面。
+預設只做到「能在自己電腦上改程式、跑測試、存檔」為止。不註冊 GitHub、
+不碰 Zeabur，這些都是加購項目，見下面「什麼時候加什麼」。
 
 1. **機器行不行** —— 跑官方 readiness check（一個小程式，不用安裝、不用登入，
    跑一次就會告訴你這台機器能不能跑 Cowork；實際下載位置寫在
@@ -28,72 +30,95 @@ Zeabur 的錯誤訊息說不清楚原因，所以順序錯了他會卡死在一�
    雲端模式會讀到舊的檔案內容，而且它回報的時間是對的，所以測試會驗到錯的東西。
 3. **工作資料夾** —— Windows 必須在 `C:\Users\<他的名字>\` 底下。
    不能用網路磁碟、不能用被搬過位置的「文件」資料夾。
-4. **GitHub** —— 註冊、建立一個**公開**的程式碼 repo、再建一個**私有**的備份 repo。
-   公開換來無限的 CI 額度；備份放私有的，因為裡面有帳號和密碼。
-5. **Zeabur** —— 註冊、儲值、租一台主機、裝 ZeaburOS（Zeabur 官方用來初始化
-   主機的系統；安裝過程會把整台租來的主機清空重灌，所以一定要在還沒放任何東西
-   上去之前做，這是它排在建專案之前、順序不能換的原因）、**然後才**建專案。
+4. **Git 設定** —— 工作資料夾裡跑：
+
+       git init
+
+   （已經有 `.git` 就跳過這行）。再檢查身份有沒有設定過：
+
+       git config user.name
+       git config user.email
+
+   兩個都有值就跳過。缺任何一個，直接用白話問他：「這台電腦要記錄每次存檔是誰、
+   什麼時候存的，只有你自己看得到，不會公開——你想留什麼名字？email 呢？」
+   拿到答案後跑：
+
+       git config user.name "<他的名字>"
+       git config user.email "<他的 email>"
+
+5. **建立專案** —— 把這個 skill 目錄底下 `local-template/` 的東西複製到他的
+   工作資料夾（不是 `template/`——那份是網頁樣板，屬於加購項目，見下一段）。
+   這一步你直接用工具做，不用叫他手動複製。複製完跑：
+
+       python3 -m pip install -r requirements-local.txt
+
+   （這份清單只鎖了 pytest，裝起來很快。）
+6. **裝好了** —— 跑一次 `scripts/run_tests.sh` 確認測試是綠的，確認第 4 步的
+   git 身份真的設好了。都沒問題，就用白話跟他說「裝好了」，不用生報告、
+   不用跑健檢——本機骨架就這幾件事，綠了就是好了。
+
+## 什麼時候加什麼
+
+本機環境裝好之後，看使用者實際說出來的需求，才加對應的東西——不要不問就
+一次通通裝上去。
+
+### 要做網頁 → 複製 Django 樣板
+
+把這個 skill 目錄底下 `template/`（跟主線第 5 步的 `local-template/` 不同份）
+複製到工作資料夾，覆蓋掉本機骨架。網頁怎麼設計、怎麼搭版面，交給
+web-design skill 自動處理，這裡不用另外決定技術細節。
+
+樣板需要的套件跟本機骨架不同，裝樣板自己鎖定版本的那份清單（跟 CI 用的是
+同一份，裝出來的版本才會跟 CI 一致）：
+
+    python3 -m pip install -r requirements.lock.txt
+
+### 要備份 / 分享 / CI → 建 GitHub repo
+
+註冊 GitHub、建立一個**公開**的程式碼 repo、push 上去。公開換來無限的 CI 額度。
+GitHub 的 connector 要他自己在設定裡連，授權畫面會跳出來要他登入——那是正常的，
+那個畫面是 GitHub 的，不是我們的。
+
+如果之後還要上線（見下一段），另外建一個**私有**的備份 repo——裡面會放帳號和
+密碼，不能公開。
+
+### 要上線 → 用 Zeabur 部署
+
+上線前先確認已經做過「要做網頁」（有 Django 樣板可以部署）跟「要備份 / 分享 /
+CI」（有 GitHub repo 可以接部署）這兩步，Zeabur 部署的是 Django 樣板，不是
+本機骨架。
+
+不要假設任何一條路可用。直接用 `npx zeabur` 或 `curl` 打 Zeabur 的網址，
+失敗訊息不會提到網路限制，沒有人查得出原因。
+
+完整步驟，順序不能換——Zeabur 的錯誤訊息說不清楚原因，順序錯了他會卡死在一個
+沒有下一步的畫面：
+
+1. 註冊、儲值、租一台主機、裝 ZeaburOS（Zeabur 官方用來初始化主機的系統；
+   安裝過程會把整台租來的主機清空重灌，所以一定要在還沒放任何東西上去之前做，
+   這是它排在建專案之前、順序不能換的原因）、**然後才**建專案。
    ZeaburOS 沒裝好就建專案，只會得到一個沒有原因的錯誤。
-   租主機時規格別選最小的那一檔（約 2GB 記憶體）—— 光 ZeaburOS 加上它自己需要的
+   租主機時規格別選最小的那一檔（約 2GB 記憶體）——光 ZeaburOS 加上它自己需要的
    K3s 加兩個空容器就吃掉 1.5GB 左右，2GB 的機器會在後面步驟悄悄卡死，而且不會
    告訴你是記憶體不夠。至少要選 2 vCPU / 4GB 那一檔（Tencent Cloud Tokyo 上約
    $4/月），這是實測跑得動的規格。
-6. **建立專案** —— 把這個 skill 目錄底下 `template/` 的東西複製到他的工作資料夾。
-   這一步你直接用工具做，不用叫他手動複製。
-7. **裝相依套件** —— 樣板需要的程式庫（Django 等）還沒裝，這台機器上不會自動裝好。
-   沒裝這一步，之後每一輪對話結束測試都會失敗——但失敗原因是「套件沒裝」，不是
-   程式碼真的壞了，看起來卻一樣是紅燈，會讓人誤以為剛剛的改動出了問題。在專案
-   資料夾裡跑 `python3 -m pip install -r requirements.lock.txt`（鎖定版本的那份
-   清單，跟 CI 用的是同一份，裝出來的版本才會跟 CI 一致）。
-8. **產生密鑰** —— 用 `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
+2. **產生密鑰** —— 用 `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
    產一組 `DJANGO_SECRET_KEY`，設進 Zeabur 的環境變數。**不要寫進任何檔案。**
-9. **接上部署** —— `develop` 分支接 staging，`main` 分支接 prod。
-10. **抄下兩組 ID** —— 開啟正式環境那個服務的頁面，從網址列抄下服務 ID 與
-    環境 ID。**CLI 沒有任何指令列得出環境 ID**，只能從網址抓，所以這一步不能跳。
-11. **設定 code repo 的部署安全變數** —— code repo 的 GitHub Actions 裡有一個
-    「deploy-safety」檢查，會確認正式環境的設定安不安全，需要兩個值才能跑：
-    `DJANGO_SECRET_KEY`（跟第 8 步產生的是同一組，設成 secret，任何人都看不到）
-    跟 `DJANGO_ALLOWED_HOSTS`（正式環境的網址，設成 variable，可以被看到）。
-    網址是安裝時自己取的名字，這個專案沒有地方會記下來，問他自己最快。跑：
+3. **接上部署** —— `develop` 分支接 staging，`main` 分支接 prod。
+4. **抄下兩組 ID** —— 開啟正式環境那個服務的頁面，從網址列抄下服務 ID 與
+   環境 ID。**CLI 沒有任何指令列得出環境 ID**，只能從網址抓，所以這一步不能跳。
+5. **設定 code repo 的部署安全變數** —— code repo 的 GitHub Actions 裡有一個
+   「deploy-safety」檢查，會確認正式環境的設定安不安全，需要兩個值才能跑：
+   `DJANGO_SECRET_KEY`（跟第 2 步產生的是同一組，設成 secret，任何人都看不到）
+   跟 `DJANGO_ALLOWED_HOSTS`（正式環境的網址，設成 variable，可以被看到）。
+   網址是安裝時自己取的名字，這個專案沒有地方會記下來，問他自己最快。跑：
 
-        gh secret set DJANGO_SECRET_KEY --repo <帳號>/<code repo> --body "<第 8 步產生的那組>"
-        gh variable set DJANGO_ALLOWED_HOSTS --repo <帳號>/<code repo> --body "<正式環境網址>"
+       gh secret set DJANGO_SECRET_KEY --repo <帳號>/<code repo> --body "<第 2 步產生的那組>"
+       gh variable set DJANGO_ALLOWED_HOSTS --repo <帳號>/<code repo> --body "<正式環境網址>"
 
-    沒設這兩個值，`deploy-safety` 那個檢查會一直紅燈——它的錯誤訊息會講清楚是
-    這個原因，不用緊張，但也不要跟他說「裝好了」，先把這兩個值補上。
-12. **備份** —— 把這個 skill 目錄底下 `backup-repo/backup.yml` 放進私有 repo 的
-    `.github/workflows/`，設定 `ZEABUR_API_TOKEN` 這個 secret，以及
-    `ZEABUR_SERVICE_ID`、`ZEABUR_ENV_ID`、`CODE_REPO` 三個變數（用第 10 步抄下來的
-    兩組 ID）。`backup-repo/README.md` 也一起放進私有 repo。
-13. **跑一次環境健檢** —— 用 health-check skill，九項全綠才算裝完。
-    沒綠的項目照它給的說法處理，不要在還有紅燈的時候就跟他說裝好了。
-
-## 本機檔位（local mode）—— 訓練當天用
-
-有些場合（例如訓練）只需要把環境裝到「能在本機改程式、跑測試、存檔、上傳 GitHub」為止，
-不做線上部署。使用者請你走「本機檔位」時，只做上面 13 步裡的這幾步，其餘跳過：
-
-- **做**：1（readiness check）、2（本機模式）、3（工作資料夾）、4（GitHub —— 只建
-  **一個公開的 code repo**，拿無限 CI；本機檔位**不建**私有備份 repo）、6（複製 template）、
-  7（裝相依套件）。做完 push 到 GitHub，讓 CI（`tests.yml` 的 `test` job）跑一次、轉綠。
-- **跳過**：5（租主機/ZeaburOS）、8-12（密鑰、接部署、抄 ID、備份）、以及 Google
-  connector。這些是部署相關，本機檔位一律不做。
-
-**複製 template 後，必須刪掉 `.github/workflows/tests.yml` 裡的 `deploy-safety` job**，
-只留 `test` job。原因：本機檔位不設部署 secret，`deploy-safety` 沒 secret 會 `exit 1`
-變紅 X，使用者一 push 就看到一個看似壞掉的紅燈 —— 但那只是還沒設定部署而已。刪掉它，
-使用者的公開 repo 的 CI 就只剩 `test`、直接全綠。（完整安裝時保留這個 job，它會提醒
-部署者補上 secret。）
-
-裝到這裡，使用者就能在自己電腦上「改一點 → 跑測試 → 綠了自動存檔 → push 上 GitHub」。
-
-## Zeabur 怎麼操作
-
-不要假設任何一條路可用。先讓 health-check skill 探測，它會告訴你走 CLI、
-MCP 還是瀏覽器。**直接用 `npx zeabur` 或 `curl` 打 Zeabur 的網址，失敗訊息
-不會提到網路限制，沒有人查得出原因。**
-
-## connector
-
-GitHub 與 Google 的 connector 要他自己在設定裡連。授權畫面會跳出來要他登入 ——
-那是正常的，那個畫面是 GitHub 或 Google 的，不是我們的。
+   沒設這兩個值，`deploy-safety` 那個檢查會一直紅燈——它的錯誤訊息會講清楚是
+   這個原因，不用緊張，但也不要跟他說「裝好了」，先把這兩個值補上。
+6. **備份** —— 把這個 skill 目錄底下 `backup-repo/backup.yml` 放進私有 repo 的
+   `.github/workflows/`，設定 `ZEABUR_API_TOKEN` 這個 secret，以及
+   `ZEABUR_SERVICE_ID`、`ZEABUR_ENV_ID`、`CODE_REPO` 三個變數（用第 4 步抄下來的
+   兩組 ID）。`backup-repo/README.md` 也一起放進私有 repo。
