@@ -29,7 +29,8 @@
 
 ### B. 三個加購段（使用者有需求才主動推薦，無 skill 引導，模型現場用資產）
 
-- 「要做網頁」→ 複製 Django `template/` + 跑 `web-polish` skill。
+- 「要做網頁」→ 複製 Django `template/`（opt-in 資產）。網頁美化的 `web-polish` **不綁這個加購**，只要
+  在弄 HTML（含本機 dev）就會自動套。
 - 「要備份 / 分享 / CI」→ 建 GitHub public repo + push。
 - 「要讓別人用 / 上線」→ Zeabur staging/prod（用現有 `zeabur.yaml`、prod 設定、`backup-repo/`）。
 
@@ -52,15 +53,18 @@
 ### E. 常駐行為（session start）強化
 
 `pillars.md` 併入以下「模型預設不會做」的內容，每次注入：
-- 互動核心原則：把技術決策翻成業務問題、一次問一輪、他答得含糊就換講法再問（從 think-first 抽核心）。
+- 互動 persona：用白話跟非技術者講話、把技術決策翻成業務問題、以「幫他把事做成」的立場對話。
+  **問法的節奏（一次問一輪、答得含糊就換講法再問）不進常駐行為，留在 think-first。**
 - 安全硬停：上正式版＝對外發布，一定停下來問（已有，強化）；log 查不到就老實說「查不到」，不要編。
 - `forbidden-questions.md` 的內容併入行為指引（不再有自動稽核探針；guard 靠 session start 常駐，不靠檢查）。
 
-`think-first` skill 保留「深問法」的完整程序；核心原則已進 session start，所以平常對話也會套。
+`think-first` skill 保留「深問法」的完整程序（含一次問一輪、換講法再問的節奏）；session start 只帶
+persona（怎麼講話、翻業務問題的立場），所以平常對話都用對的口氣，但完整問法要 think-first 被觸發才跑。
 
 ### F. web-polish skill（新增）
 
-自包含的網頁美化指引，給加購的 web-app 路徑用。原則（白話、可執行）：版面克制（一個重點其他安靜、
+自包含的網頁美化指引。**只要在做網頁/HTML 就會用到，不限上線或加購——本機 dev 剛做出一個頁面時
+就該套**（可自動觸發，非 install 加購專屬）。原則（白話、可執行）：版面克制（一個重點其他安靜、
 留白夠）、排版（中文字重別太重、行高夠、標題內文對比清楚）、單一主色、避開一看就是 AI 的預設感
 （過亮紫藍漸層、三張一樣的卡片）、產出自包含一頁（樣式內嵌、系統字、不依賴外部資源）。
 
@@ -100,8 +104,8 @@ Claude 檢查關鍵幾項後，用一句「裝好了」帶過（學員選擇的�
    import 錯誤、無孤兒測試）。
 7. `pillars.md` 內容含這三類條目（可用關鍵字斷言，或測 `session_start` 注入內容含之）：互動核心原則、
    對外發布前停下來問、log 查不到就老實說。
-8. `plugins/starter-kit/skills/web-polish/SKILL.md` 存在且 frontmatter 有 `name` 與 `description`；
-   `install-wizard/SKILL.md` 的「做網頁」加購段引用 `web-polish`。
+8. `plugins/starter-kit/skills/web-polish/SKILL.md` 存在且 frontmatter 有 `name` 與 `description`，
+   且 description 涵蓋「做網頁／HTML 時使用」（可自動觸發、非 install 加購專屬）。
 9. deck.html 含「首次裝什麼（本機四樣）」與「之後加什麼（三加購）」兩區塊，且每項標注回扣的概念。
 10. opt-in 部署資產仍在（Django `template/`、`zeabur.yaml`、`backup-repo/`），且其既有測試
     （`test_prod_settings`、`test_template_project`、`test_backup`、`test_ci_superset`、
